@@ -1,5 +1,6 @@
 import re
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import datetime
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 
 DURATION_RE = re.compile(r"^(\d+)([smhdw])$")
@@ -7,7 +8,8 @@ DURATION_RE = re.compile(r"^(\d+)([smhdw])$")
 
 def parse_duration(text):
     m = DURATION_RE.match(text.strip().lower())
-    if not m: return 0
+    if not m:
+        return 0
     return int(m.group(1)) * Config.DURATION_MAP[m.group(2)]
 
 
@@ -15,7 +17,7 @@ def mention_html(user_id, name):
     return f'<a href="tg://user?id={user_id}">{name}</a>'
 
 
-async def resolve_user(app, message: Message):
+async def resolve_user(app, message):
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
         return u.id, u.first_name or "User", u.username
@@ -37,35 +39,42 @@ async def resolve_user(app, message: Message):
 
 
 def build_buttons(button_data):
-    if not button_data: return None
+    if not button_data:
+        return None
     rows = []
     for row in button_data:
         rows.append([InlineKeyboardButton(**b) for b in row])
     return InlineKeyboardMarkup(rows)
 
 
-def parse_buttons_from_text(text):
-    """Parse [Label](buttonurl://link) style buttons."""
-    pattern = r"\[([^\]]+)\]\(buttonurl://([^\)]+)\)"
-    matches = re.findall(pattern, text)
-    if not matches: return None, text
-    rows = [[InlineKeyboardButton(label, url=url)] for label, url in matches]
-    clean = re.sub(pattern, "", text).strip()
-    return InlineKeyboardMarkup(rows), clean
-
-
 def format_text(template, user=None, chat=None, count=0, extra=None):
+    if not template:
+        template = ""
     if user:
+        first = user.first_name or ""
+        last = user.last_name or ""
+        fullname = (first + " " + last).strip() or first
+        username = getattr(user, "username", None)
+        mention = user.mention if hasattr(user, "mention") else first
         template = (template
-            .replace("{name}", user.first_name or "")
-            .replace("{username}", f"@{user.username}" if getattr(user, "username", None) else "")
-            .replace("{mention}", user.mention if hasattr(user, "mention") else "")
-            .replace("{user_id}", str(user.id)))
+            .replace("{first}", first)
+            .replace("{last}", last)
+            .replace("{fullname}", fullname)
+            .replace("{name}", first)
+            .replace("{mention}", mention)
+            .replace("{id}", str(user.id))
+            .replace("{user_id}", str(user.id))
+            .replace("{username}", f"@{username}" if username else mention))
     if chat:
         template = (template
             .replace("{chatname}", chat.title or "")
             .replace("{chat_id}", str(chat.id)))
     template = template.replace("{count}", str(count))
+    template = template.replace("{members}", str(count))
+    now = datetime.now()
+    template = (template
+        .replace("{date}", now.strftime("%d %b %Y"))
+        .replace("{time}", now.strftime("%H:%M:%S")))
     if extra:
         for k, v in extra.items():
             template = template.replace("{" + k + "}", str(v))
