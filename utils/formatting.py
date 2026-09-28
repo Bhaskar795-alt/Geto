@@ -4,17 +4,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def parse_buttons(text):
-    """
-    Rose-style button parser.
-    Supports:
-      [Label](buttonurl://URL)
-      [Label](buttonurl://URL:same)  <- same row
-      [Label](buttonurl#primary://URL)
-      [Label](buttonurl#danger://URL)
-      [Label](buttonurl#success://URL)
-      [Label](buttonurl://#notename)
-    Returns (clean_text, InlineKeyboardMarkup or None)
-    """
+    """Rose-style button parser."""
     if not text:
         return "", None
 
@@ -24,22 +14,13 @@ def parse_buttons(text):
 
     for m in re.finditer(pattern, text):
         label = m.group(1)
-        style = m.group(2)  # e.g. "#primary" or None
         url = m.group(3)
-        same = m.group(4)   # ":same" or None
+        same = m.group(4)
 
         if url.startswith("#"):
-            # Note button — link to bot PM
-            url = f"https://t.me/{{bot_username}}?start=note_{url[1:]}"
+            url = f"https://t.me/YourBotUsername?start=note_{url[1:]}"
 
         btn = InlineKeyboardButton(label, url=url)
-
-        # Try to set style (Pyrogram 2.0.106 may not support)
-        if style:
-            try:
-                btn = InlineKeyboardButton(label, url=url, style=style[1:])
-            except Exception:
-                pass
 
         if same and current_row:
             current_row.append(btn)
@@ -59,26 +40,14 @@ def parse_buttons(text):
     return clean.strip(), InlineKeyboardMarkup(rows)
 
 
-def apply_fillings(text, user=None, chat=None, count=0, rules="", extra=None):
-    """Apply Rose-style fillings to a message."""
+def replace_fillings(text, user=None, chat=None, count=0, rules="", extra=None):
+    from datetime import datetime
     if not text:
         return ""
 
-    # Random replies
     if "%%%" in text:
         parts = [p.strip() for p in text.split("%%%") if p.strip()]
         text = random.choice(parts) if parts else text
-
-    # Handle {admin}/{user}/{allow_bot} — return None if should not trigger
-    return text
-
-
-def replace_fillings(text, user=None, chat=None, count=0, rules="", extra=None):
-    """Replace all fillings in text."""
-    from datetime import datetime
-
-    if not text:
-        return ""
 
     if user:
         first = user.first_name or ""
@@ -119,7 +88,6 @@ def replace_fillings(text, user=None, chat=None, count=0, rules="", extra=None):
 
 
 def check_permissions(text, is_admin_user=False, is_bot=False):
-    """Check if text has {admin}/{user}/{allow_bot} and if user qualifies."""
     if "{admin}" in text and not is_admin_user:
         return False
     if "{user}" in text and is_admin_user:
@@ -130,5 +98,4 @@ def check_permissions(text, is_admin_user=False, is_bot=False):
 
 
 def clean_permission_tags(text):
-    """Remove {admin}, {user}, {allow_bot} from text."""
     return text.replace("{admin}", "").replace("{user}", "").replace("{allow_bot}", "").strip()
