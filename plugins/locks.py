@@ -43,11 +43,11 @@ NATIVE_LOCKS = {
     "inline": "can_send_other_messages",
     "url": "can_add_web_page_previews",
     "poll": "can_send_polls",
-    "reaction": "can_send_reactions",  # will try, may not be supported
+    "reaction": "can_send_reactions",
 }
 
 # =========================================================
-# APPLY GROUP PERMISSIONS (Tries reactions if supported)
+# APPLY GROUP PERMISSIONS
 # =========================================================
 
 async def apply_group_permissions(client, chat_id, locks):
@@ -61,7 +61,7 @@ async def apply_group_permissions(client, chat_id, locks):
 
     for lock_type, perm in NATIVE_LOCKS.items():
         if lock_type == "reaction":
-            continue  # Handle separately
+            continue
         if locks.get(lock_type, False):
             perms[perm] = False
 
@@ -69,11 +69,9 @@ async def apply_group_permissions(client, chat_id, locks):
         for k in perms:
             perms[k] = False
 
-    # Try including reactions
     reactions_off = locks.get("reaction", False) or locks.get("all", False)
 
     try:
-        # Attempt with can_send_reactions
         try:
             chat_perms = ChatPermissions(
                 can_send_messages=perms["can_send_messages"],
@@ -86,7 +84,6 @@ async def apply_group_permissions(client, chat_id, locks):
             await client.set_chat_permissions(chat_id, chat_perms)
             return True
         except (TypeError, AttributeError):
-            # Not supported — fallback without reactions
             chat_perms = ChatPermissions(
                 can_send_messages=perms["can_send_messages"],
                 can_send_media_messages=perms["can_send_media_messages"],
@@ -95,8 +92,7 @@ async def apply_group_permissions(client, chat_id, locks):
                 can_send_polls=perms["can_send_polls"],
             )
             await client.set_chat_permissions(chat_id, chat_perms)
-            return False  # reaction not applied
-
+            return False
     except Exception as e:
         print(f"[LOCK] Failed: {e}")
         return False
@@ -135,7 +131,6 @@ def build_locktypes_text(chat_locks):
         locked_str = ", ".join(f"<code>{x}</code>" for x in locked)
     else:
         locked_str = "<i>No locks active</i>"
-
     return (
         "🔒 <b>Lock Types</b>\n\n"
         "Tap any lock to toggle it.\n"
@@ -165,23 +160,17 @@ async def locktypes_cmd(client, message):
 async def lk_toggle_cb(client, cb):
     lock_type = cb.data.split(":", 1)[1]
     chat_id = cb.message.chat.id
-
     if not await is_admin(client, chat_id, cb.from_user.id):
         return await cb.answer("❌ Admin only.", show_alert=True)
-
     if lock_type not in LOCK_TYPES:
         return await cb.answer("❌ Invalid lock.", show_alert=True)
-
     locks = await db.get_locks(chat_id)
     current = locks.get(lock_type, False)
     new_state = not current
-
     await db.set_lock(chat_id, lock_type, new_state)
-
     locks_updated = await db.get_locks(chat_id)
     if lock_type in NATIVE_LOCKS or lock_type in ("all", "reaction"):
         await apply_group_permissions(client, chat_id, locks_updated)
-
     try:
         await cb.message.edit_text(
             build_locktypes_text(locks_updated),
@@ -189,7 +178,6 @@ async def lk_toggle_cb(client, cb):
         )
     except Exception:
         pass
-
     status = "locked ✅" if new_state else "unlocked ❌"
     await cb.answer(f"{lock_type} {status}", show_alert=False)
 
@@ -215,13 +203,10 @@ async def lk_unlockall_cb(client, cb):
     chat_id = cb.message.chat.id
     if not await is_admin(client, chat_id, cb.from_user.id):
         return await cb.answer("❌ Admin only.", show_alert=True)
-
     for lt in LOCK_TYPES:
         await db.set_lock(chat_id, lt, False)
-
     locks = await db.get_locks(chat_id)
     await apply_group_permissions(client, chat_id, locks)
-
     try:
         await cb.message.edit_text(
             build_locktypes_text(locks),
@@ -240,17 +225,13 @@ async def lk_unlockall_cb(client, cb):
 async def lock_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     if len(message.command) < 2:
         return await message.reply_text(
-            "📝 Usage: /lock <type1> [type2...]\n"
-            "See: /locktypes"
+            "📝 Usage: /lock <type1> [type2...]\nSee: /locktypes"
         )
-
     raw = message.text.split(None, 1)[1]
     reason = ""
     custom_action = ""
-
     if "###" in raw:
         types_part, rest = raw.split("###", 1)
         rest = rest.strip()
@@ -261,40 +242,33 @@ async def lock_cmd(client, message):
         reason = rest
     else:
         types_part = raw
-
     types = [t.strip().lower() for t in types_part.split() if t.strip()]
     invalid = [t for t in types if t not in LOCK_TYPES]
     if invalid:
         return await message.reply_text(f"❌ Invalid types: {', '.join(invalid)}")
-
     if "all" in types and not reason and not custom_action and "###" in raw:
         for t in LOCK_TYPES:
             await db.set_chat_field(message.chat.id, f"lock_reason_{t}", None)
             await db.set_chat_field(message.chat.id, f"lock_action_{t}", None)
         return await message.reply_text("✅ All custom lock actions reset.")
-
     for t in types:
         await db.set_lock(message.chat.id, t, True)
         if reason:
             await db.set_chat_field(message.chat.id, f"lock_reason_{t}", reason)
         if custom_action:
             await db.set_chat_field(message.chat.id, f"lock_action_{t}", custom_action)
-
     locks = await db.get_locks(message.chat.id)
     applied = await apply_group_permissions(client, message.chat.id, locks)
-
     txt = f"🔒 Locked: <code>{', '.join(types)}</code>"
     if reason:
         txt += f"\n📝 {reason}"
     if custom_action:
         txt += f"\n⚡ Action: {custom_action}"
-
     native_types = [t for t in types if t in NATIVE_LOCKS or t == "all"]
     if native_types and applied:
         txt += f"\n\n✅ <i>Group permissions updated</i>"
     elif native_types:
         txt += f"\n\n⚠️ <i>Group permissions updated (reactions not supported)</i>"
-
     await message.reply_text(txt)
 
 
@@ -306,21 +280,16 @@ async def lock_cmd(client, message):
 async def unlock_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     if len(message.command) < 2:
         return await message.reply_text("📝 Usage: /unlock <type1> [type2...]")
-
     types = [t.strip().lower() for t in message.command[1:] if t.strip()]
     invalid = [t for t in types if t not in LOCK_TYPES]
     if invalid:
         return await message.reply_text(f"❌ Invalid types: {', '.join(invalid)}")
-
     for t in types:
         await db.set_lock(message.chat.id, t, False)
-
     locks = await db.get_locks(message.chat.id)
     await apply_group_permissions(client, message.chat.id, locks)
-
     await message.reply_text(f"🔓 Unlocked: <code>{', '.join(types)}</code>")
 
 
@@ -335,10 +304,8 @@ async def locks_cmd(client, message):
               if k not in ("_id", "chat_id") and v is True]
     if not active:
         return await message.reply_text("🔓 No active locks.")
-
     native = [x for x in active if x in NATIVE_LOCKS or x == "all"]
     text = [x for x in active if x not in native]
-
     txt = "🔒 <b>Active Locks:</b>\n\n"
     if native:
         txt += f"<b>🔒 Group Permissions:</b>\n"
@@ -346,7 +313,6 @@ async def locks_cmd(client, message):
     if text:
         txt += f"<b>🗑️ Message Delete:</b>\n"
         txt += ", ".join(f"<code>{x}</code>" for x in text)
-
     await message.reply_text(txt)
 
 
@@ -418,33 +384,84 @@ async def rmallowlistall_cmd(client, message):
 
 
 # =========================================================
-# APPLY ACTION
+# APPLY ACTION — Silent + Duration Support
 # =========================================================
 
 async def apply_lock_action(client, message, action, reason):
     if not message.from_user:
         return
     uid = message.from_user.id
+
+    silent = False
+    duration = ""
+
+    # Parse silent prefix
+    if action.startswith("s"):
+        silent = True
+        action = action[1:]
+
+    # Parse duration (e.g., "smute 12h")
+    parts = action.split(None, 1)
+    action = parts[0]
+    if len(parts) > 1:
+        duration = parts[1]
+
+    chat = await db.get_chat(message.chat.id)
+    log_channel = chat.get("log_channel", 0)
+    silent_enabled = chat.get("silentactions", False)
+
+    # Only silent if enabled AND log channel set
+    is_silent = silent and silent_enabled and log_channel
+
     try:
         if action == "warn":
             await db.add_warn(message.chat.id, uid, reason or "Locked content")
+            if not is_silent:
+                await message.reply_text(f"⚠️ {message.from_user.mention} warned.")
+
         elif action == "mute":
-            await client.restrict_chat_member(
-                message.chat.id, uid,
-                ChatPermissions(can_send_messages=False)
-            )
-            await db.mute_user(message.chat.id, uid, 0, "lock")
+            if duration:
+                from utils.helpers import parse_duration
+                secs = parse_duration(duration)
+                until = datetime.now() + timedelta(seconds=secs)
+                await client.restrict_chat_member(
+                    message.chat.id, uid,
+                    ChatPermissions(can_send_messages=False),
+                    until_date=until
+                )
+                await db.mute_user(message.chat.id, uid, int(until.timestamp()), duration)
+            else:
+                await client.restrict_chat_member(
+                    message.chat.id, uid,
+                    ChatPermissions(can_send_messages=False)
+                )
+                await db.mute_user(message.chat.id, uid, 0, "lock")
+            if not is_silent:
+                await message.reply_text(f"🔇 {message.from_user.mention} muted.")
+
         elif action == "ban":
-            await client.ban_chat_member(message.chat.id, uid)
+            if duration:
+                from utils.helpers import parse_duration
+                secs = parse_duration(duration)
+                until = datetime.now() + timedelta(seconds=secs)
+                await client.ban_chat_member(message.chat.id, uid, until_date=until)
+            else:
+                await client.ban_chat_member(message.chat.id, uid)
+            if not is_silent:
+                await message.reply_text(f"🔨 {message.from_user.mention} banned.")
+
         elif action == "kick":
             await client.ban_chat_member(message.chat.id, uid)
             await client.unban_chat_member(message.chat.id, uid)
-    except Exception:
-        pass
+            if not is_silent:
+                await message.reply_text(f"👢 {message.from_user.mention} kicked.")
+
+    except Exception as e:
+        print(f"[LOCK ACTION] {e}")
 
 
 # =========================================================
-# LOCK WATCHER — Message delete for non-native locks
+# LOCK WATCHER
 # =========================================================
 
 @Client.on_message(filters.group & ~filters.service, group=40)
