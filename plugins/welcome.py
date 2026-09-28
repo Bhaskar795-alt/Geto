@@ -1,28 +1,7 @@
-import re
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import db
 from utils.permissions import is_admin
-from utils.helpers import format_text
-
-
-def parse_buttons(text):
-    """Parse [Label](buttonurl://URL) style buttons."""
-    if not text:
-        return "", None
-    pattern = r"\[([^\]]+)\]\(buttonurl://([^\)]+)\)"
-    rows = []
-    for line in text.split("\n"):
-        row = []
-        for m in re.finditer(pattern, line):
-            row.append(InlineKeyboardButton(m.group(1), url=m.group(2)))
-        if row:
-            rows.append(row)
-    clean = re.sub(pattern, "", text)
-    clean = "\n".join(line for line in clean.split("\n") if line.strip())
-    if not rows:
-        return clean.strip(), None
-    return clean.strip(), InlineKeyboardMarkup(rows)
+from utils.formatting import parse_buttons, replace_fillings
 
 
 @Client.on_message(filters.command("setwelcome") & filters.group)
@@ -34,7 +13,6 @@ async def setwelcome_cmd(client, message):
     file_id = None
     text = ""
 
-    # Case 1: Reply to a media/text message
     if message.reply_to_message:
         r = message.reply_to_message
         if r.photo:
@@ -52,28 +30,15 @@ async def setwelcome_cmd(client, message):
             extra = message.text.split(None, 1)[1]
             if extra:
                 text = extra
-
-    # Case 2: Direct text command
     elif len(message.command) > 1:
         text = message.text.split(None, 1)[1]
-
-    # Case 3: Nothing
     else:
-        return await message.reply_text(
-            "❌ <b>Usage:</b>\n"
-            "1. Reply to a photo/video/text with /setwelcome\n"
-            "2. Or /setwelcome <text>\n"
-            "3. Buttons: [Label](buttonurl://URL)"
-        )
+        return await message.reply_text("❌ Reply or provide text.")
 
     await db.set_chat_field(message.chat.id, "welcome", text)
     await db.set_chat_field(message.chat.id, "welcome_media_type", media_type)
     await db.set_chat_field(message.chat.id, "welcome_file_id", file_id)
-
-    if media_type:
-        await message.reply_text(f"✅ Welcome saved ({media_type} + text + buttons).")
-    else:
-        await message.reply_text("✅ Welcome saved (text + buttons).")
+    await message.reply_text(f"✅ Welcome saved{' (' + media_type + ')' if media_type else ''}.")
 
 
 @Client.on_message(filters.command("resetwelcome") & filters.group)
@@ -110,8 +75,8 @@ async def welcome_preview(client, message):
 
     count = await client.get_chat_members_count(message.chat.id)
     rules_text = chat.get("rules") or "No rules set."
-    txt = format_text(tmpl or "", user=message.from_user, chat=message.chat,
-                      count=count, extra={"rules": rules_text})
+    txt = replace_fillings(tmpl or "", user=message.from_user, chat=message.chat,
+                           count=count, rules=rules_text)
     clean, markup = parse_buttons(txt)
 
     try:
@@ -150,8 +115,8 @@ async def on_new_member(client, message):
     for user in message.new_chat_members:
         if user.is_bot:
             continue
-        txt = format_text(tmpl, user=user, chat=message.chat, count=count,
-                          extra={"rules": rules_text})
+        txt = replace_fillings(tmpl, user=user, chat=message.chat,
+                               count=count, rules=rules_text)
         clean, markup = parse_buttons(txt)
 
         try:
