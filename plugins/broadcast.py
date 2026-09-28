@@ -19,11 +19,6 @@ async def broadcast_users(client, message):
             await asyncio.sleep(e.value)
         except Exception:
             failed += 1
-        if (sent + failed) % 20 == 0:
-            try:
-                await status.edit_text(f"📢 Sent: {sent} | Failed: {failed}")
-            except Exception:
-                pass
     await status.edit_text(f"✅ Broadcast done.\n📤 Sent: {sent}\n❌ Failed: {failed}")
 
 
