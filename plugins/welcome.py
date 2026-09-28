@@ -90,6 +90,8 @@ async def welcome_preview(client, message):
             await message.reply_document(file_id, caption=clean, reply_markup=markup)
         elif media_type == "sticker":
             await message.reply_sticker(file_id)
+            if clean or markup:
+                await message.reply_text(clean or "📎", reply_markup=markup)
         else:
             await message.reply_text(clean or "…", reply_markup=markup)
     except Exception as e:
@@ -129,9 +131,9 @@ async def on_new_member(client, message):
             elif media_type == "document":
                 await message.reply_document(file_id, caption=clean, reply_markup=markup)
             elif media_type == "sticker":
-                await message.reply_sticker(file_id)
-                if clean:
-                    await message.reply_text(clean, reply_markup=markup)
+                sent = await message.reply_sticker(file_id)
+                if clean or markup:
+                    await sent.reply_text(clean or "📎", reply_markup=markup)
             else:
                 await message.reply_text(clean or "…", reply_markup=markup)
         except Exception:
