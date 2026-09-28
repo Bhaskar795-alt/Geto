@@ -26,19 +26,13 @@ LOCK_TYPES = [
 # =========================================================
 
 NATIVE_LOCKS = {
-    # Send Text Messages
     "text": "can_send_messages",
-
-    # Send Media
     "photo": "can_send_media_messages",
     "video": "can_send_media_messages",
     "audio": "can_send_media_messages",
+    "document": "can_send_media_messages",
     "voice": "can_send_media_messages",
     "videonote": "can_send_media_messages",
-    "document": "can_send_media_messages",
-    "album": "can_send_media_messages",
-
-    # Stickers & GIFs
     "sticker": "can_send_other_messages",
     "stickeranimated": "can_send_other_messages",
     "stickerpremium": "can_send_other_messages",
@@ -47,16 +41,13 @@ NATIVE_LOCKS = {
     "emojigame": "can_send_other_messages",
     "game": "can_send_other_messages",
     "inline": "can_send_other_messages",
-
-    # Embed Links
     "url": "can_add_web_page_previews",
-
-    # Polls
     "poll": "can_send_polls",
+    "reaction": "can_send_reactions",  # will try, may not be supported
 }
 
 # =========================================================
-# APPLY GROUP PERMISSIONS
+# APPLY GROUP PERMISSIONS (Tries reactions if supported)
 # =========================================================
 
 async def apply_group_permissions(client, chat_id, locks):
@@ -69,27 +60,43 @@ async def apply_group_permissions(client, chat_id, locks):
     }
 
     for lock_type, perm in NATIVE_LOCKS.items():
+        if lock_type == "reaction":
+            continue  # Handle separately
         if locks.get(lock_type, False):
             perms[perm] = False
 
     if locks.get("all", False):
-        perms["can_send_messages"] = False
-        perms["can_send_media_messages"] = False
-        perms["can_send_other_messages"] = False
-        perms["can_add_web_page_previews"] = False
-        perms["can_send_polls"] = False
+        for k in perms:
+            perms[k] = False
 
-    chat_perms = ChatPermissions(
-        can_send_messages=perms["can_send_messages"],
-        can_send_media_messages=perms["can_send_media_messages"],
-        can_send_other_messages=perms["can_send_other_messages"],
-        can_add_web_page_previews=perms["can_add_web_page_previews"],
-        can_send_polls=perms["can_send_polls"],
-    )
+    # Try including reactions
+    reactions_off = locks.get("reaction", False) or locks.get("all", False)
 
     try:
-        await client.set_chat_permissions(chat_id, chat_perms)
-        return True
+        # Attempt with can_send_reactions
+        try:
+            chat_perms = ChatPermissions(
+                can_send_messages=perms["can_send_messages"],
+                can_send_media_messages=perms["can_send_media_messages"],
+                can_send_other_messages=perms["can_send_other_messages"],
+                can_add_web_page_previews=perms["can_add_web_page_previews"],
+                can_send_polls=perms["can_send_polls"],
+                can_send_reactions=not reactions_off,
+            )
+            await client.set_chat_permissions(chat_id, chat_perms)
+            return True
+        except (TypeError, AttributeError):
+            # Not supported — fallback without reactions
+            chat_perms = ChatPermissions(
+                can_send_messages=perms["can_send_messages"],
+                can_send_media_messages=perms["can_send_media_messages"],
+                can_send_other_messages=perms["can_send_other_messages"],
+                can_add_web_page_previews=perms["can_add_web_page_previews"],
+                can_send_polls=perms["can_send_polls"],
+            )
+            await client.set_chat_permissions(chat_id, chat_perms)
+            return False  # reaction not applied
+
     except Exception as e:
         print(f"[LOCK] Failed: {e}")
         return False
@@ -172,7 +179,7 @@ async def lk_toggle_cb(client, cb):
     await db.set_lock(chat_id, lock_type, new_state)
 
     locks_updated = await db.get_locks(chat_id)
-    if lock_type in NATIVE_LOCKS or lock_type == "all":
+    if lock_type in NATIVE_LOCKS or lock_type in ("all", "reaction"):
         await apply_group_permissions(client, chat_id, locks_updated)
 
     try:
@@ -286,7 +293,7 @@ async def lock_cmd(client, message):
     if native_types and applied:
         txt += f"\n\n✅ <i>Group permissions updated</i>"
     elif native_types:
-        txt += f"\n\n⚠️ <i>Could not update group permissions</i>"
+        txt += f"\n\n⚠️ <i>Group permissions updated (reactions not supported)</i>"
 
     await message.reply_text(txt)
 
@@ -437,7 +444,7 @@ async def apply_lock_action(client, message, action, reason):
 
 
 # =========================================================
-# LOCK WATCHER
+# LOCK WATCHER — Message delete for non-native locks
 # =========================================================
 
 @Client.on_message(filters.group & ~filters.service, group=40)
@@ -463,16 +470,13 @@ async def lock_watcher(client, message):
 
     matched_type = None
 
-    # ---- ALL ----
     if locked("all"):
         matched_type = "all"
 
-    # ---- TEXT ----
     if not matched_type and locked("text") and (message.text or message.caption):
         if not is_allowed():
             matched_type = "text"
 
-    # ---- FORWARD ----
     if not matched_type:
         if locked("forward") and message.forward_date:
             matched_type = "forward"
@@ -483,52 +487,36 @@ async def lock_watcher(client, message):
         elif locked("forwardbot") and message.forward_from and message.forward_from.is_bot:
             matched_type = "forwardbot"
 
-    # ---- BOT ----
     if not matched_type:
         if locked("bot") and message.from_user and message.from_user.is_bot:
             matched_type = "bot"
         if locked("guestbot") and message.via_bot:
             matched_type = "guestbot"
 
-    # ---- URL / INVITELINK / PATTERNS ----
     if not matched_type and text:
-        # Invitelink check FIRST
         if locked("invitelink") and re.search(
             r"(t\.me/|telegram\.me/|telegram\.dog/)", text_lower
         ):
             if not is_allowed():
                 matched_type = "invitelink"
-
-        # General URL check
         elif locked("url") and re.search(
             r"(https?://|www\.|\b\w+\.(com|net|org|io|me|co|in|ru|xyz|app|dev)\b)",
             text_lower
         ):
             if not is_allowed():
                 matched_type = "url"
-
-        # Bot links
         elif locked("botlink") and re.search(r"@\w*bot\b", text_lower):
             matched_type = "botlink"
-
-        # Email
         elif locked("email") and re.search(r"\S+@\S+\.\S+", text):
             matched_type = "email"
-
-        # Phone
         elif locked("phone") and re.search(r"\+?\d{10,}", text):
             matched_type = "phone"
-
-        # Cashtag
         elif locked("cashtag") and re.search(r"\$[A-Z]{2,}", text):
             matched_type = "cashtag"
-
-        # Command
         elif locked("command") and text_lower.startswith("/"):
             if not is_allowed():
                 matched_type = "command"
 
-    # ---- EMOJI ----
     if not matched_type and text:
         if locked("emojionly"):
             stripped = re.sub(
@@ -542,7 +530,6 @@ async def lock_watcher(client, message):
                     matched_type = "emojicustom"
                     break
 
-    # ---- SCRIPTS ----
     if not matched_type and text:
         if locked("rtl") and re.search(r"[\u0590-\u08FF]", text):
             matched_type = "rtl"
@@ -555,7 +542,6 @@ async def lock_watcher(client, message):
         elif locked("zalgo") and re.search(r"[\u0300-\u036F]{3,}", text):
             matched_type = "zalgo"
 
-    # ---- OTHER ----
     if not matched_type:
         if locked("contact") and message.contact:
             matched_type = "contact"
@@ -572,13 +558,11 @@ async def lock_watcher(client, message):
     if not matched_type:
         return
 
-    # Delete
     try:
         await message.delete()
     except Exception:
         pass
 
-    # Custom action
     action = chat.get(f"lock_action_{matched_type}") or chat.get("lock_action_all")
     reason = chat.get(f"lock_reason_{matched_type}") or chat.get("lock_reason_all")
 
