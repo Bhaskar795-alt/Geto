@@ -34,17 +34,38 @@ UNMUTE_PERMS = ChatPermissions(
 # =========================================================
 
 def get_admin_role(status):
-    """Safely handle Pyrogram status enum or string."""
     value = getattr(status, "value", None)
     if value is not None:
         status = value
-    status = str(status).lower()
-    status = status.replace("chatmemberstatus.", "")
+    status = str(status).lower().replace("chatmemberstatus.", "")
     if status in ("owner", "creator"):
         return "👑", "Owner"
     if status in ("administrator", "admin"):
         return "🛡️", "Admin"
     return "👤", "Member"
+
+
+# =========================================================
+# LOG HELPER
+# =========================================================
+
+async def send_log(client, message, action, target=None, reason=""):
+    """Send log to configured log channel."""
+    try:
+        from plugins.logs import log_action
+        if target is None:
+            target = message.from_user
+        await log_action(
+            client,
+            message.chat.id,
+            "admin",
+            action,
+            message.from_user,
+            target,
+            reason
+        )
+    except Exception as e:
+        print(f"[LOG] {e}")
 
 
 # =========================================================
@@ -66,6 +87,11 @@ async def ban_cmd(client, message):
         await message.reply_text(
             f"🔨 <b>Banned</b> {mention_html(uid, name)}\n📝 {reason}"
         )
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "ban", target, reason)
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -83,6 +109,7 @@ async def dban_cmd(client, message):
         await message.reply_text(
             f"🔨 <b>Banned + Deleted</b> {mention_html(target.id, target.first_name)}"
         )
+        await send_log(client, message, "dban", target, "with message deleted")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -106,6 +133,11 @@ async def sban_cmd(client, message):
             message.chat.id,
             f"🔨 <b>Silently banned</b> {mention_html(uid, name)}"
         )
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "sban", target, "silent")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -133,6 +165,11 @@ async def tban_cmd(client, message):
             f"🔨 <b>Temp-Ban</b> {mention_html(uid, name)}\n"
             f"⏱️ Duration: <code>{message.command[2]}</code>"
         )
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "tban", target, f"for {message.command[2]}")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -149,6 +186,11 @@ async def unban_cmd(client, message):
     try:
         await client.unban_chat_member(message.chat.id, uid)
         await message.reply_text(f"✅ <b>Unbanned</b> {mention_html(uid, name)}")
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "unban", target, "")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -170,6 +212,11 @@ async def mute_cmd(client, message):
         await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS)
         await db.mute_user(message.chat.id, uid, 0, "permanent")
         await message.reply_text(f"🔇 <b>Muted</b> {mention_html(uid, name)}")
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "mute", target, "permanent")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -188,6 +235,7 @@ async def dmute_cmd(client, message):
         await message.reply_text(
             f"🔇 <b>Muted + Deleted</b> {mention_html(target.id, target.first_name)}"
         )
+        await send_log(client, message, "dmute", target, "with message deleted")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -212,6 +260,11 @@ async def smute_cmd(client, message):
             message.chat.id,
             f"🔇 <b>Silently muted</b> {mention_html(uid, name)}"
         )
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "smute", target, "silent")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -244,6 +297,11 @@ async def tmute_cmd(client, message):
             f"🔇 <b>Temp-Mute</b> {mention_html(uid, name)}\n"
             f"⏱️ Duration: <code>{message.command[2]}</code>"
         )
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "tmute", target, f"for {message.command[2]}")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -261,6 +319,11 @@ async def unmute_cmd(client, message):
         await client.restrict_chat_member(message.chat.id, uid, UNMUTE_PERMS)
         await db.unmute_user(message.chat.id, uid)
         await message.reply_text(f"🔊 <b>Unmuted</b> {mention_html(uid, name)}")
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "unmute", target, "")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -301,6 +364,11 @@ async def kick_cmd(client, message):
         await client.ban_chat_member(message.chat.id, uid)
         await client.unban_chat_member(message.chat.id, uid)
         await message.reply_text(f"👢 <b>Kicked</b> {mention_html(uid, name)}")
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "kick", target, "")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -319,6 +387,7 @@ async def dkick_cmd(client, message):
         await message.reply_text(
             f"👢 <b>Kicked + Deleted</b> {mention_html(target.id, target.first_name)}"
         )
+        await send_log(client, message, "dkick", target, "with message deleted")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -343,6 +412,11 @@ async def skick_cmd(client, message):
             message.chat.id,
             f"👢 <b>Silently kicked</b> {mention_html(uid, name)}"
         )
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "skick", target, "silent")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -387,6 +461,11 @@ async def promote_cmd(client, message):
             privileges=privileges
         )
         await message.reply_text(f"⬆️ <b>Promoted</b> {mention_html(uid, name)}")
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "promote", target, "")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -421,6 +500,11 @@ async def demote_cmd(client, message):
             privileges=privileges
         )
         await message.reply_text(f"⬇️ <b>Demoted</b> {mention_html(uid, name)}")
+        try:
+            target = await client.get_users(uid)
+        except Exception:
+            target = uid
+        await send_log(client, message, "demote", target, "")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
