@@ -1,5 +1,4 @@
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import db
 from utils.permissions import is_admin
 
@@ -32,6 +31,4 @@ async def rules_cmd(client, message):
         return await message.reply_text("This command is for groups.")
     chat = await db.get_chat(message.chat.id)
     rules = chat.get("rules") or "No rules set."
-    btn = InlineKeyboardMarkup([[InlineKeyboardButton("📜 RULES",
-        url=f"https://t.me/{client.me.username}?start=rules_{message.chat.id}")]])
     await message.reply_text(rules)
