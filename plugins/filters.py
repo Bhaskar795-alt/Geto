@@ -1,27 +1,43 @@
 import re
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import db
 from utils.permissions import is_admin
+from utils.formatting import (
+    parse_buttons, replace_fillings, check_permissions, clean_permission_tags
+)
 
 
-def parse_buttons(text):
-    """Parse [Label](buttonurl://URL) style buttons."""
-    if not text:
-        return "", None
-    pattern = r"\[([^\]]+)\]\(buttonurl://([^\)]+)\)"
-    rows = []
-    for line in text.split("\n"):
-        row = []
-        for m in re.finditer(pattern, line):
-            row.append(InlineKeyboardButton(m.group(1), url=m.group(2)))
-        if row:
-            rows.append(row)
-    clean = re.sub(pattern, "", text)
-    clean = "\n".join(line for line in clean.split("\n") if line.strip())
-    if not rows:
-        return clean.strip(), None
-    return clean.strip(), InlineKeyboardMarkup(rows)
+def parse_triggers(raw):
+    """
+    Parse trigger patterns:
+      hello                  -> ["hello"]  (word-based)
+      "hello friend"         -> ["hello friend"]  (phrase)
+      (hi, hey, hello)       -> ["hi", "hey", "hello"]
+      "exact:hi"             -> exact match
+      "prefix:hi"            -> prefix match
+    Returns (triggers_list, mode) where mode in ("word","phrase","exact","prefix")
+    """
+    raw = raw.strip()
+    mode = "word"
+
+    # Exact
+    if raw.startswith('"exact:') or raw.startswith("'exact:"):
+        return [raw[7:-1].lower()], "exact"
+    # Prefix
+    if raw.startswith('"prefix:') or raw.startswith("'prefix:"):
+        return [raw[8:-1].lower()], "prefix"
+
+    # Quoted phrase
+    if raw.startswith('"') and raw.endswith('"'):
+        return [raw[1:-1].lower()], "phrase"
+
+    # Multiple in brackets
+    if raw.startswith("(") and raw.endswith(")"):
+        inner = raw[1:-1]
+        parts = [p.strip().strip('"').strip("'").lower() for p in inner.split(",")]
+        return [p for p in parts if p], "word"
+
+    return [raw.lower()], "word"
 
 
 @Client.on_message(filters.command("filter") & filters.group)
@@ -31,12 +47,30 @@ async def add_filter(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
             "📝 <b>Usage:</b>\n"
-            "/filter &lt;keyword&gt; (reply to a message)\n"
-            "Or: /filter &lt;keyword&gt; &lt;text&gt;"
+            "/filter &lt;trigger&gt; (reply to a message)\n"
+            "Or: /filter &lt;trigger&gt; &lt;text&gt;\n\n"
+            "Triggers can be:\n"
+            "• word: <code>hello</code>\n"
+            "• phrase: <code>\"hello friend\"</code>\n"
+            "• multi: <code>(hi, hey, hello)</code>\n"
+            "• exact: <code>\"exact:hi\"</code>\n"
+            "• prefix: <code>\"prefix:hi\"</code>"
         )
-    keyword = message.command[1]
 
-    # Case 1: Reply to a message
+    # Detect multi-word trigger inside quotes
+    raw_text = message.text.split(None, 1)[1]
+    trigger_match = re.match(r'("[^"]+"|\([^)]+\)|\S+)', raw_text)
+    if not trigger_match:
+        return await message.reply_text("❌ Invalid trigger.")
+    raw_trigger = trigger_match.group(1)
+
+    triggers, mode = parse_triggers(raw_trigger)
+    if not triggers:
+        return await message.reply_text("❌ Invalid trigger.")
+
+    keyword = triggers[0]
+
+    # Reply to a message
     if message.reply_to_message:
         r = message.reply_to_message
         text = r.caption or r.text or ""
@@ -51,15 +85,16 @@ async def add_filter(client, message):
             msg_type, file_id = "document", r.document.file_id
         elif r.animation:
             msg_type, file_id = "animation", r.animation.file_id
-    # Case 2: Direct text
-    elif len(message.command) > 2:
-        text = message.text.split(None, 2)[2]
-        msg_type, file_id = "text", ""
     else:
-        return await message.reply_text("❌ Reply to a message or provide text.")
+        # Direct text (remove trigger from text)
+        rest = raw_text[len(raw_trigger):].strip()
+        text = rest
+        msg_type, file_id = "text", ""
 
     await db.save_filter(message.chat.id, keyword, text, msg_type, file_id)
-    await message.reply_text(f"✅ Filter saved: <code>{keyword}</code>")
+    await db.set_chat_field(message.chat.id, f"filter_mode_{keyword}", mode)
+    await db.set_chat_field(message.chat.id, f"filter_triggers_{keyword}", triggers)
+    await message.reply_text(f"✅ Filter saved: <code>{keyword}</code> (mode: {mode})")
 
 
 @Client.on_message(filters.command("stop") & filters.group)
@@ -94,31 +129,118 @@ async def list_filters(client, message):
 async def filter_watcher(client, message):
     if not message.text and not message.caption:
         return
+
     text = (message.text or message.caption).lower()
-    for word in text.split():
-        doc = await db.get_filter(message.chat.id, word)
-        if not doc:
+    chat = await db.get_chat(message.chat.id)
+    rules_text = chat.get("rules") or "No rules."
+
+    async for fdoc in db.get_all_filters(message.chat.id):
+        keyword = fdoc["keyword"]
+        mode = chat.get(f"filter_mode_{keyword}", "word")
+        triggers = chat.get(f"filter_triggers_{keyword}", [keyword])
+
+        matched = False
+        for t in triggers:
+            if mode == "exact":
+                if text.strip() == t:
+                    matched = True
+            elif mode == "prefix":
+                if text.startswith(t):
+                    matched = True
+            elif mode == "phrase":
+                if t in text:
+                    matched = True
+            else:  # word
+                if t in text.split():
+                    matched = True
+            if matched:
+                break
+
+        if not matched:
             continue
-        reply = doc.get("reply") or ""
+
+        reply = fdoc.get("reply") or ""
+
+        # Force trigger (any user can use if "force" appended)
+        is_bot = message.from_user.is_bot if message.from_user else False
+        is_admin_user = await is_admin(client, message.chat.id,
+                                        message.from_user.id) if message.from_user else False
+
+        # Permission check
+        if not check_permissions(reply, is_admin_user, is_bot):
+            # If {user} but user is admin — skip
+            continue
+
+        reply = clean_permission_tags(reply)
+
+        # Random replies
+        if "%%%" in reply:
+            parts = [p.strip() for p in reply.split("%%%") if p.strip()]
+            import random
+            reply = random.choice(parts) if parts else ""
+
+        # Replace fillings
+        reply = replace_fillings(reply, user=message.from_user,
+                                 chat=message.chat, count=0, rules=rules_text)
+
         clean, markup = parse_buttons(reply)
+
         try:
-            if doc["msg_type"] == "text":
+            if fdoc["msg_type"] == "text":
                 await message.reply_text(clean or "…", reply_markup=markup)
-            elif doc["msg_type"] == "photo":
-                await message.reply_photo(doc["file_id"], caption=clean or "", reply_markup=markup)
-            elif doc["msg_type"] == "video":
-                await message.reply_video(doc["file_id"], caption=clean or "", reply_markup=markup)
-            elif doc["msg_type"] == "sticker":
-                await message.reply_sticker(doc["file_id"])
+            elif fdoc["msg_type"] == "photo":
+                await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+            elif fdoc["msg_type"] == "video":
+                await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+            elif fdoc["msg_type"] == "sticker":
+                await message.reply_sticker(fdoc["file_id"])
                 if clean:
                     await message.reply_text(clean, reply_markup=markup)
-            elif doc["msg_type"] == "document":
-                await message.reply_document(doc["file_id"], caption=clean or "", reply_markup=markup)
-            elif doc["msg_type"] == "animation":
-                await message.reply_animation(doc["file_id"], caption=clean or "", reply_markup=markup)
+            elif fdoc["msg_type"] == "document":
+                await message.reply_document(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+            elif fdoc["msg_type"] == "animation":
+                await message.reply_animation(fdoc["file_id"], caption=clean or "", reply_markup=markup)
         except Exception:
             try:
                 await message.reply_text(clean or "…", reply_markup=markup)
             except Exception:
                 pass
         break
+
+
+# ============ FORCE / NOFORMAT ============
+
+@Client.on_message(filters.group & filters.text & ~filters.service, group=6)
+async def filter_force_noformat(client, message):
+    text = message.text.strip()
+
+    # Force trigger
+    if text.endswith(" force"):
+        trigger = text[:-6].strip().lower()
+        fdoc = await db.get_filter(message.chat.id, trigger)
+        if fdoc:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            reply = fdoc.get("reply") or ""
+            clean, markup = parse_buttons(reply)
+            try:
+                if fdoc["msg_type"] == "text":
+                    await message.reply_text(clean or "…", reply_markup=markup)
+                elif fdoc["msg_type"] == "photo":
+                    await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                elif fdoc["msg_type"] == "video":
+                    await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+            except Exception:
+                pass
+        return
+
+    # Noformat
+    if text.endswith(" noformat"):
+        trigger = text[:-9].strip().lower()
+        fdoc = await db.get_filter(message.chat.id, trigger)
+        if fdoc:
+            reply = fdoc.get("reply") or ""
+            await message.reply_text(f"<b>Filter</b> <code>{trigger}</code>\n\n{reply}")
+        return
