@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import ChatPermissions
-from config import Config
 from database import db
 from utils.helpers import resolve_user, parse_duration, mention_html
 from utils.permissions import is_admin
