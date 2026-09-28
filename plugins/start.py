@@ -327,24 +327,20 @@ HELP_CATEGORIES = {
 
 HELP_TEXT = """🌹 <b>GETO BOT — Help Menu</b>
 
-Hey! I'm <b>GETO</b>, a group management bot.
+𝐇ᴇʏ! 𝐈'ᴀᴍ <b>𝐘ᴏᴜʀ</b>, ᴀ 𝐆ʀᴏᴜᴩ 𝐌ᴀɴᴀɢᴇᴍᴇɴᴛ 𝐁ᴏᴛ
 
-I can help you with:
-• Moderation & anti-spam
-• Welcome/Goodbye messages
-• Filters & notes
-• Locks & blocklists
-• Rules, warnings & more!
+𝐈 𝐂ᴀɴ 𝐇ᴇʟᴩ 𝐘ᴏᴜ 𝐖ɪᴛʜ 
+• 𝐌ᴏᴅᴇʀᴀᴛɪᴏɴ &𝐀ɴᴛɪ 𝐒ᴩᴀᴍ 
+• 𝐖ᴇʟᴄᴏᴍᴇ / 𝐆ᴏᴏᴅʙʏᴇ 𝐌ᴇꜱꜱᴀɢᴇꜱ
+• 𝐅ɪʟᴛᴇʀꜱ & 𝐍ᴏᴛᴇꜱ
+• 𝐋ᴏᴄᴋ & 𝐁ʟᴏᴄᴋʟɪꜱᴛ
+• 𝐑ᴜʟᴇꜱ, 𝐖ᴀʀɴɪɴɢ & 𝐌ᴏʀᴇ
 
-<b>📌 Basic Commands</b>
-/start — Start the bot
-/help — This menu
-/ping — Latency
-/id — Get IDs
-/info — User info
-/stats — Bot stats
+<b>𝐁ᴀꜱɪᴄ 𝐂ᴏᴍᴍᴏɴᴅ</b>
+/start — 𝐒ᴛᴀʀᴛ 𝐓ʜᴇ 𝐁ᴏᴛ
+/help — 𝐌ᴇɴᴜ
 
-<b>👇 Choose a category below:</b>
+<b>👇 𝐀ʟʟ 𝐂ᴏᴍᴍᴏɴᴅꜱ 𝐂ᴀɴ 𝐁ᴇ 𝐔ꜱᴇᴅ 𝐖ɪᴛʜ 𝐓ʜᴇ 𝐅ᴏʟʟᴏᴡɪɴɢ::</b>
 """
 
 
@@ -383,10 +379,10 @@ def build_help_back_keyboard():
 async def start_cmd(client, message):
     await db.add_user(message.from_user.id, message.from_user.first_name)
     btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Add Me To Group",
+        [InlineKeyboardButton("⚜️𝐓ᴀᴩ 𝐓ᴏ 𝐒ᴇᴇ 𝐌ᴀɢɪᴄ🫰",
             url=f"https://t.me/{Config.BOT_USERNAME}?startgroup=true")],
-        [InlineKeyboardButton("📜 Help", callback_data="help_home"),
-         InlineKeyboardButton("👑 Owner", url=f"tg://user?id={Config.OWNER_ID}")]
+        [InlineKeyboardButton("𝐇ᴇʟᴩ", callback_data="help_home"),
+         InlineKeyboardButton("👑 𝐎ᴡɴᴇʀ", url=f"https://t.me/{Config.OWNER_USERNAME}")
     ])
     await message.reply_text(
         f"🌹 <b>Welcome to {Config.BOT_NAME}!</b>\n\n"
