@@ -18,23 +18,41 @@ def mention_html(user_id, name):
 
 
 async def resolve_user(app, message):
+    """Resolve user from reply, @username, user ID, or HTML mention."""
+    # Case 1: Reply
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
         return u.id, u.first_name or "User", u.username
+
     if len(message.command) > 1:
         arg = message.command[1]
+
+        # Case 2: @username
         if arg.startswith("@"):
             try:
                 u = await app.get_users(arg)
                 return u.id, u.first_name or "User", u.username
             except Exception:
                 return None, None, None
+
+        # Case 3: Numeric user ID
         if arg.isdigit():
             try:
                 u = await app.get_users(int(arg))
                 return u.id, u.first_name or "User", u.username
             except Exception:
                 return int(arg), f"User {arg}", None
+
+        # Case 4: HTML mention (tg://user?id=123)
+        mention_match = re.search(r"tg://user\?id=(\d+)", arg)
+        if mention_match:
+            uid = int(mention_match.group(1))
+            try:
+                u = await app.get_users(uid)
+                return u.id, u.first_name or "User", u.username
+            except Exception:
+                return uid, f"User {uid}", None
+
     return None, None, None
 
 
