@@ -9,6 +9,7 @@ class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
     MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
     OWNER_ID = int(os.getenv("OWNER_ID", 0))
+    OWNER_USERNAME = os.getenv("OWNER_USERNAME", "your_username")
     LOG_CHANNEL = int(os.getenv("LOG_CHANNEL", 0))
     BOT_NAME = os.getenv("BOT_NAME", "GETO")
     BOT_USERNAME = os.getenv("BOT_USERNAME", "GetoBot")
