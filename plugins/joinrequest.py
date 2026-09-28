@@ -4,8 +4,9 @@ from config import Config
 from database import db
 from utils.permissions import is_admin
 
+
 @Client.on_chat_join_request()
-async def on_join_request(client, request: ChatJoinRequest):
+async def on_join_request(client, request):
     chat = await db.get_chat(request.chat.id)
     if not chat.get("joinrequest_notify", True): return
     user = request.from_user
