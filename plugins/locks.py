@@ -22,10 +22,8 @@ LOCK_TYPES = [
 ]
 
 # =========================================================
-# NATIVE PERMISSION MAPPING
+# NATIVE PERMISSION LOCKS
 # =========================================================
-# Telegram group permissions based locks
-# Ye locks group settings mein off ho jayenge
 
 NATIVE_LOCKS = {
     # Send Text Messages
@@ -40,7 +38,7 @@ NATIVE_LOCKS = {
     "document": "can_send_media_messages",
     "album": "can_send_media_messages",
 
-    # Stickers & GIFs → can_send_other_messages
+    # Stickers & GIFs
     "sticker": "can_send_other_messages",
     "stickeranimated": "can_send_other_messages",
     "stickerpremium": "can_send_other_messages",
@@ -52,23 +50,16 @@ NATIVE_LOCKS = {
 
     # Embed Links
     "url": "can_add_web_page_previews",
-    "invitelink": "can_add_web_page_previews",
 
     # Polls
     "poll": "can_send_polls",
 }
-
 
 # =========================================================
 # APPLY GROUP PERMISSIONS
 # =========================================================
 
 async def apply_group_permissions(client, chat_id, locks):
-    """
-    Apply Telegram native permissions based on current locks.
-    Only touches permissions that have native locks.
-    """
-    # All permissions enabled by default
     perms = {
         "can_send_messages": True,
         "can_send_media_messages": True,
@@ -77,12 +68,10 @@ async def apply_group_permissions(client, chat_id, locks):
         "can_send_polls": True,
     }
 
-    # Apply each native lock
     for lock_type, perm in NATIVE_LOCKS.items():
         if locks.get(lock_type, False):
             perms[perm] = False
 
-    # "all" disables everything
     if locks.get("all", False):
         perms["can_send_messages"] = False
         perms["can_send_media_messages"] = False
@@ -90,7 +79,6 @@ async def apply_group_permissions(client, chat_id, locks):
         perms["can_add_web_page_previews"] = False
         perms["can_send_polls"] = False
 
-    # Build ChatPermissions
     chat_perms = ChatPermissions(
         can_send_messages=perms["can_send_messages"],
         can_send_media_messages=perms["can_send_media_messages"],
@@ -103,7 +91,7 @@ async def apply_group_permissions(client, chat_id, locks):
         await client.set_chat_permissions(chat_id, chat_perms)
         return True
     except Exception as e:
-        print(f"[LOCK] Failed to set permissions: {e}")
+        print(f"[LOCK] Failed: {e}")
         return False
 
 
@@ -117,8 +105,6 @@ def build_locktypes_keyboard(chat_locks):
     for lt in LOCK_TYPES:
         is_locked = chat_locks.get(lt, False)
         mark = "✅" if is_locked else "❌"
-        # Mark native locks differently
-        native_mark = "🔒" if lt in NATIVE_LOCKS else "🗑️"
         row.append(InlineKeyboardButton(
             f"{mark} {lt}",
             callback_data=f"lk_toggle:{lt}"
@@ -147,8 +133,6 @@ def build_locktypes_text(chat_locks):
         "🔒 <b>Lock Types</b>\n\n"
         "Tap any lock to toggle it.\n"
         "✅ = Locked  |  ❌ = Unlocked\n\n"
-        "🔒 = Group permission lock\n"
-        "🗑️ = Message delete lock\n\n"
         f"<b>Currently locked:</b>\n{locked_str}"
     )
 
@@ -453,7 +437,7 @@ async def apply_lock_action(client, message, action, reason):
 
 
 # =========================================================
-# LOCK WATCHER — only non-native locks
+# LOCK WATCHER
 # =========================================================
 
 @Client.on_message(filters.group & ~filters.service, group=40)
@@ -479,10 +463,16 @@ async def lock_watcher(client, message):
 
     matched_type = None
 
-    # Non-native locks only
+    # ---- ALL ----
     if locked("all"):
         matched_type = "all"
 
+    # ---- TEXT ----
+    if not matched_type and locked("text") and (message.text or message.caption):
+        if not is_allowed():
+            matched_type = "text"
+
+    # ---- FORWARD ----
     if not matched_type:
         if locked("forward") and message.forward_date:
             matched_type = "forward"
@@ -493,28 +483,57 @@ async def lock_watcher(client, message):
         elif locked("forwardbot") and message.forward_from and message.forward_from.is_bot:
             matched_type = "forwardbot"
 
+    # ---- BOT ----
     if not matched_type:
         if locked("bot") and message.from_user and message.from_user.is_bot:
             matched_type = "bot"
         if locked("guestbot") and message.via_bot:
             matched_type = "guestbot"
 
+    # ---- URL / INVITELINK / PATTERNS ----
     if not matched_type and text:
-        if locked("email") and re.search(r"\S+@\S+\.\S+", text):
-            matched_type = "email"
-        elif locked("phone") and re.search(r"\+?\d{10,}", text):
-            matched_type = "phone"
-        elif locked("cashtag") and re.search(r"\$[A-Z]{2,}", text):
-            matched_type = "cashtag"
+        # Invitelink check FIRST
+        if locked("invitelink") and re.search(
+            r"(t\.me/|telegram\.me/|telegram\.dog/)", text_lower
+        ):
+            if not is_allowed():
+                matched_type = "invitelink"
+
+        # General URL check
+        elif locked("url") and re.search(
+            r"(https?://|www\.|\b\w+\.(com|net|org|io|me|co|in|ru|xyz|app|dev)\b)",
+            text_lower
+        ):
+            if not is_allowed():
+                matched_type = "url"
+
+        # Bot links
         elif locked("botlink") and re.search(r"@\w*bot\b", text_lower):
             matched_type = "botlink"
+
+        # Email
+        elif locked("email") and re.search(r"\S+@\S+\.\S+", text):
+            matched_type = "email"
+
+        # Phone
+        elif locked("phone") and re.search(r"\+?\d{10,}", text):
+            matched_type = "phone"
+
+        # Cashtag
+        elif locked("cashtag") and re.search(r"\$[A-Z]{2,}", text):
+            matched_type = "cashtag"
+
+        # Command
         elif locked("command") and text_lower.startswith("/"):
             if not is_allowed():
                 matched_type = "command"
 
+    # ---- EMOJI ----
     if not matched_type and text:
         if locked("emojionly"):
-            stripped = re.sub(r"[\U0001F300-\U0001F9FF\U0001F600-\U0001F64F]", "", text).strip()
+            stripped = re.sub(
+                r"[\U0001F300-\U0001F9FF\U0001F600-\U0001F64F]", "", text
+            ).strip()
             if not stripped and len(text) > 0:
                 matched_type = "emojionly"
         if locked("emojicustom") and message.entities:
@@ -523,16 +542,20 @@ async def lock_watcher(client, message):
                     matched_type = "emojicustom"
                     break
 
+    # ---- SCRIPTS ----
     if not matched_type and text:
         if locked("rtl") and re.search(r"[\u0590-\u08FF]", text):
             matched_type = "rtl"
-        elif locked("cjk") and re.search(r"[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]", text):
+        elif locked("cjk") and re.search(
+            r"[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]", text
+        ):
             matched_type = "cjk"
         elif locked("cyrillic") and re.search(r"[\u0400-\u04FF]", text):
             matched_type = "cyrillic"
         elif locked("zalgo") and re.search(r"[\u0300-\u036F]{3,}", text):
             matched_type = "zalgo"
 
+    # ---- OTHER ----
     if not matched_type:
         if locked("contact") and message.contact:
             matched_type = "contact"
@@ -549,11 +572,13 @@ async def lock_watcher(client, message):
     if not matched_type:
         return
 
+    # Delete
     try:
         await message.delete()
     except Exception:
         pass
 
+    # Custom action
     action = chat.get(f"lock_action_{matched_type}") or chat.get("lock_action_all")
     reason = chat.get(f"lock_reason_{matched_type}") or chat.get("lock_reason_all")
 
