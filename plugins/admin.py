@@ -204,14 +204,15 @@ async def demote_cmd(client, message):
         await message.reply_text(f"❌ {e}")
 
 
-# ---------- ADMIN LIST ----------
+# ---------- ADMIN LIST (FIXED) ----------
 
 @Client.on_message(filters.command("admins") & filters.group)
 async def admins_cmd(client, message):
     lines = ["<b>👮 Admins:</b>\n"]
     try:
         async for m in client.get_chat_members(message.chat.id, filter="administrators"):
-            role = "👑 Owner" if str(m.status) == "ChatMemberStatus.OWNER" else "🛡️ Admin"
+            status = str(m.status).replace("ChatMemberStatus.", "")
+            role = "👑 Owner" if "OWNER" in status else "🛡️ Admin"
             lines.append(f"{role} — {m.user.mention} (<code>{m.user.id}</code>)")
     except Exception as e:
         return await message.reply_text(f"❌ {e}")
@@ -223,7 +224,8 @@ async def adminlist_cmd(client, message):
     lines = ["<b>👮 Admin List:</b>\n"]
     try:
         async for m in client.get_chat_members(message.chat.id, filter="administrators"):
-            role = "👑" if str(m.status) == "ChatMemberStatus.OWNER" else "🛡️"
+            status = str(m.status).replace("ChatMemberStatus.", "")
+            role = "👑" if "OWNER" in status else "🛡️"
             lines.append(f"{role} {m.user.mention} — <code>{m.user.id}</code>")
     except Exception as e:
         return await message.reply_text(f"❌ {e}")
@@ -242,7 +244,7 @@ async def admincache_cmd(client, message):
                 "user_id": m.user.id,
                 "name": m.user.first_name or "",
                 "username": m.user.username or "",
-                "status": str(m.status),
+                "status": str(m.status).replace("ChatMemberStatus.", ""),
             })
         await db.set_chat_field(message.chat.id, "admins_cache", admins)
         await db.set_chat_field(message.chat.id, "admin_cache_time", int(time.time()))
