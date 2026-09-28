@@ -16,19 +16,18 @@ log = logging.getLogger("GETO")
 
 
 async def health(request):
-    return web.Response(text="🌹 GETO BOT is alive!")
+    return web.Response(text="🌹 GETO BOT IS ALIVE!")
 
 
-async def start_web_server():
-    web_app = web.Application()
+async def start_web():
+    app_web = web.Application()
+    app_web.router.add_get("/", health)
+    app_web.router.add_get("/health", health)
 
-    web_app.router.add_get("/", health)
-    web_app.router.add_get("/health", health)
-
-    runner = web.AppRunner(web_app)
+    runner = web.AppRunner(app_web)
     await runner.setup()
 
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
 
     site = web.TCPSite(
         runner,
@@ -43,6 +42,8 @@ async def start_web_server():
 
 async def main():
 
+    # IMPORTANT:
+    # Client MUST be created inside this event loop.
     app = Client(
         "geto_bot",
         api_id=Config.API_ID,
@@ -51,19 +52,28 @@ async def main():
         plugins=dict(root="plugins")
     )
 
-    await app.start()
+    try:
+        await app.start()
 
-    me = await app.get_me()
+        me = await app.get_me()
 
-    log.info(
-        f"🌹 GETO BOT started as @{me.username} ({me.id})"
-    )
+        log.info(
+            f"🌹 GETO BOT started as @{me.username} ({me.id})"
+        )
 
-    await start_web_server()
+        await start_web()
 
-    await idle()
+        await idle()
 
-    await app.stop()
+    except Exception:
+        log.exception("❌ GETO BOT crashed")
+
+    finally:
+        try:
+            if app.is_connected:
+                await app.stop()
+        except Exception:
+            log.exception("❌ Error while stopping bot")
 
 
 if __name__ == "__main__":
