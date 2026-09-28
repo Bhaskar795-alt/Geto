@@ -1,5 +1,4 @@
 from pyrogram import Client, filters
-from config import Config
 from database import db
 from utils.permissions import is_admin
 
@@ -24,12 +23,3 @@ async def nolog_cmd(client, message):
         return await message.reply_text("❌ Admin only.")
     await db.set_chat_field(message.chat.id, "log_channel", 0)
     await message.reply_text("✅ Logs disabled.")
-
-
-async def send_log(client, chat_id, text):
-    log_chat = await db.get_log_chat(chat_id)
-    if not log_chat: return
-    try:
-        await client.send_message(log_chat, text)
-    except Exception:
-        pass
