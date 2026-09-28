@@ -11,7 +11,6 @@ async def antiraid_cmd(client, message):
     chat = await db.get_chat(message.chat.id)
     state = not chat.get("antiraid", False)
     await db.set_chat_field(message.chat.id, "antiraid", state)
-    await db.set_chat_field(message.chat.id, "antiraid_time", int(time.time()))
     await message.reply_text(f"✅ AntiRaid: {'ON' if state else 'OFF'}")
 
 
@@ -34,14 +33,8 @@ async def raid_watcher(client, message):
     chat = await db.get_chat(message.chat.id)
     if not chat.get("antiraid", False): return
     threshold = chat.get("antiraid_threshold", 10)
-    window = 30
-    now = int(time.time())
-    cnt = await db.get_flood(message.chat.id, 0)
-    if cnt == 0:
-        await db.set_chat_field(message.chat.id, "antiraid_time", now)
     await db.add_flood(message.chat.id, 0)
     count = await db.get_flood(message.chat.id, 0)
     if count >= threshold:
-        await message.reply_text("🚨 <b>Raid detected!</b> Auto-protection enabled for 5 minutes.")
-        await db.set_chat_field(message.chat.id, "antiraid_time", now + 300)
+        await message.reply_text("🚨 <b>Raid detected!</b>")
         await db.reset_flood(message.chat.id, 0)
