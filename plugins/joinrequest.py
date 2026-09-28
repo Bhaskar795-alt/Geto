@@ -1,10 +1,8 @@
 from pyrogram import Client, filters
-from pyrogram.enums import ChatJoinRequest
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 from database import db
 from utils.permissions import is_admin
-
 
 @Client.on_chat_join_request()
 async def on_join_request(client, request: ChatJoinRequest):
