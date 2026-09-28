@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from pyrogram import Client, filters
-from pyrogram.types import ChatPermissions
+from pyrogram.types import ChatPermissions, ChatPrivileges
 from database import db
 from utils.helpers import resolve_user, parse_duration, mention_html
 from utils.permissions import is_admin
@@ -141,9 +141,20 @@ async def promote_cmd(client, message):
     uid, name, _ = await resolve_user(client, message)
     if not uid: return await message.reply_text("❌ Give a user.")
     try:
-        await client.promote_chat_member(message.chat.id, uid,
-            can_delete_messages=True, can_restrict_members=True,
-            can_pin_messages=True, can_invite_users=True)
+        await client.promote_chat_member(
+            chat_id=message.chat.id,
+            user_id=uid,
+            privileges=ChatPrivileges(
+                can_delete_messages=True,
+                can_restrict_members=True,
+                can_pin_messages=True,
+                can_invite_users=True,
+                can_manage_video_chats=True,
+                can_change_info=True,
+                can_manage_chat=True,
+                can_promote_members=False,
+            )
+        )
         await message.reply_text(f"⬆️ Promoted {mention_html(uid, name)}")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
@@ -156,9 +167,20 @@ async def demote_cmd(client, message):
     uid, name, _ = await resolve_user(client, message)
     if not uid: return await message.reply_text("❌ Give a user.")
     try:
-        await client.promote_chat_member(message.chat.id, uid,
-            can_delete_messages=False, can_restrict_members=False,
-            can_pin_messages=False, can_invite_users=False)
+        await client.promote_chat_member(
+            chat_id=message.chat.id,
+            user_id=uid,
+            privileges=ChatPrivileges(
+                can_delete_messages=False,
+                can_restrict_members=False,
+                can_pin_messages=False,
+                can_invite_users=False,
+                can_manage_video_chats=False,
+                can_change_info=False,
+                can_manage_chat=False,
+                can_promote_members=False,
+            )
+        )
         await message.reply_text(f"⬇️ Demoted {mention_html(uid, name)}")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
