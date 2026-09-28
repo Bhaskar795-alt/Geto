@@ -119,6 +119,31 @@ async def logcategories_cmd(client, message):
 
 
 # =========================================================
+# SILENT ACTIONS
+# =========================================================
+
+@Client.on_message(filters.command("silentactions") & filters.group)
+async def silentactions_cmd(client, message):
+    if not await is_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text("❌ Admin only.")
+    if len(message.command) < 2 or message.command[1].lower() not in (
+        "yes", "no", "on", "off"
+    ):
+        chat = await db.get_chat(message.chat.id)
+        state = chat.get("silentactions", False)
+        log = chat.get("log_channel", 0)
+        return await message.reply_text(
+            f"📋 <b>Silent Actions:</b> {'ON' if state else 'OFF'}\n"
+            f"📊 <b>Log Channel:</b> {'Set' if log else 'Not set'}\n"
+            f"⚠️ Log channel required for silent actions.\n"
+            f"Usage: /silentactions yes|no"
+        )
+    state = message.command[1].lower() in ("yes", "on")
+    await db.set_chat_field(message.chat.id, "silentactions", state)
+    await message.reply_text(f"✅ Silent Actions: {'ON' if state else 'OFF'}")
+
+
+# =========================================================
 # LOG_ACTION — Call this from any command
 # =========================================================
 
