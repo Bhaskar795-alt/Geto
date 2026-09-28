@@ -20,7 +20,7 @@ async def rm_block_cmd(client, message):
     if len(message.command) < 2:
         return await message.reply_text("Usage: /rmblocklist <word>")
     await db.remove_block(message.chat.id, message.command[1])
-    await message.reply_text(f"🗑️ Removed.")
+    await message.reply_text("🗑️ Removed.")
 
 
 @Client.on_message(filters.command("blocklist") & filters.group)
