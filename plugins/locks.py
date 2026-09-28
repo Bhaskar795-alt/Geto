@@ -1,15 +1,27 @@
 import re
 from datetime import datetime, timedelta
 from pyrogram import Client, filters
-from pyrogram.types import ChatPermissions
+from pyrogram.types import ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
 from database import db
 from utils.permissions import is_admin
 
 # =========================================================
-# ALL LOCK TYPES
+# LOCK TYPES
 # =========================================================
 
-# Telegram-native permissions (can be set via ChatPermissions)
+LOCK_TYPES = [
+    "all", "album", "anonchannel", "audio", "bot", "botlink", "button",
+    "cashtag", "checklist", "cjk", "collage", "command", "comment",
+    "contact", "cyrillic", "document", "email", "emoji", "emojicustom",
+    "emojigame", "emojionly", "externalreply", "forward", "forwardbot",
+    "forwardchannel", "forwardstory", "forwarduser", "game", "gif",
+    "guestbot", "inline", "invitelink", "location", "outsidereaction",
+    "phone", "photo", "poll", "reaction", "richmessage", "rtl",
+    "slideshow", "spoiler", "sticker", "stickeranimated",
+    "stickerpremium", "text", "url", "video", "videonote", "voice", "zalgo",
+]
+
+# Telegram-native permission locks
 NATIVE_LOCKS = {
     "photo": "can_send_media_messages",
     "video": "can_send_media_messages",
@@ -27,78 +39,191 @@ NATIVE_LOCKS = {
     "poll": "can_send_polls",
 }
 
-# Non-native locks (must be handled by deleting messages)
-TEXT_LOCKS = {
-    "all", "album", "anonchannel", "bot", "botlink", "button",
-    "cashtag", "checklist", "cjk", "collage", "command", "comment",
-    "contact", "cyrillic", "email", "emoji", "emojicustom",
-    "emojionly", "externalreply", "forward", "forwardbot",
-    "forwardchannel", "forwardstory", "forwarduser", "guestbot",
-    "invitelink", "location", "outsidereaction", "phone", "reaction",
-    "richmessage", "rtl", "slideshow", "spoiler", "stickeranimated",
-    "stickerpremium", "text", "zalgo",
-}
-
-LOCK_TYPES = list(NATIVE_LOCKS.keys()) + list(TEXT_LOCKS)
-LOCK_TYPES = sorted(set(LOCK_TYPES))
-
 
 # =========================================================
-# APPLY NATIVE PERMISSIONS
+# APPLY GROUP PERMISSIONS
 # =========================================================
 
 async def apply_group_permissions(client, chat_id, locks):
-    """
-    Apply Telegram native permissions based on current locks.
-    Only touches permissions that have native locks.
-    """
-    # Default permissions (all allowed)
     perms = {
         "can_send_messages": True,
         "can_send_media_messages": True,
         "can_send_other_messages": True,
         "can_add_web_page_previews": True,
         "can_send_polls": True,
-        "can_change_info": False,
-        "can_invite_users": True,
-        "can_pin_messages": False,
     }
 
-    # Apply native locks (disable the permission)
     for lock_type, perm in NATIVE_LOCKS.items():
         if locks.get(lock_type, False):
             perms[perm] = False
 
-    # Special: all → disable everything
-    if locks.get("all", False):
+    if locks.get("all", False) or locks.get("text", False):
         perms["can_send_messages"] = False
 
-    # Special: text → disable text messages
-    if locks.get("text", False):
-        perms["can_send_messages"] = False
-
-    # Build ChatPermissions
     chat_perms = ChatPermissions(
         can_send_messages=perms["can_send_messages"],
         can_send_media_messages=perms["can_send_media_messages"],
         can_send_other_messages=perms["can_send_other_messages"],
         can_add_web_page_previews=perms["can_add_web_page_previews"],
         can_send_polls=perms["can_send_polls"],
-        can_change_info=perms["can_change_info"],
-        can_invite_users=perms["can_invite_users"],
-        can_pin_messages=perms["can_pin_messages"],
     )
 
     try:
         await client.set_chat_permissions(chat_id, chat_perms)
         return True
-    except Exception as e:
-        print(f"Failed to set permissions: {e}")
+    except Exception:
         return False
 
 
 # =========================================================
-# LOCK
+# BUILD KEYBOARD (Locktypes buttons)
+# =========================================================
+
+def build_locktypes_keyboard(chat_locks):
+    """
+    Build a 3-column keyboard with all lock types.
+    Shows ✅ for locked, ❌ for unlocked.
+    """
+    buttons = []
+    row = []
+    for lt in LOCK_TYPES:
+        is_locked = chat_locks.get(lt, False)
+        mark = "✅" if is_locked else "❌"
+        row.append(InlineKeyboardButton(
+            f"{mark} {lt}",
+            callback_data=f"lk_toggle:{lt}"
+        ))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    # Bottom controls
+    buttons.append([
+        InlineKeyboardButton("🔄 Refresh", callback_data="lk_refresh"),
+        InlineKeyboardButton("🔓 Unlock All", callback_data="lk_unlockall"),
+    ])
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_locktypes_text(chat_locks):
+    """Header text for locktypes menu."""
+    locked = [k for k, v in chat_locks.items()
+              if k in LOCK_TYPES and v is True]
+    if locked:
+        locked_str = ", ".join(f"<code>{x}</code>" for x in locked)
+    else:
+        locked_str = "<i>No locks active</i>"
+
+    return (
+        "🔒 <b>Lock Types</b>\n\n"
+        "Tap any lock to toggle it.\n"
+        "✅ = Locked  |  ❌ = Unlocked\n\n"
+        f"<b>Currently locked:</b>\n{locked_str}"
+    )
+
+
+# =========================================================
+# /locktypes COMMAND
+# =========================================================
+
+@Client.on_message(filters.command("locktypes") & filters.group)
+async def locktypes_cmd(client, message):
+    locks = await db.get_locks(message.chat.id)
+    await message.reply_text(
+        build_locktypes_text(locks),
+        reply_markup=build_locktypes_keyboard(locks)
+    )
+
+
+# =========================================================
+# CALLBACK — Toggle lock
+# =========================================================
+
+@Client.on_callback_query(filters.regex(r"^lk_toggle:"))
+async def lk_toggle_cb(client, cb):
+    lock_type = cb.data.split(":", 1)[1]
+    chat_id = cb.message.chat.id
+
+    if not await is_admin(client, chat_id, cb.from_user.id):
+        return await cb.answer("❌ Admin only.", show_alert=True)
+
+    if lock_type not in LOCK_TYPES:
+        return await cb.answer("❌ Invalid lock.", show_alert=True)
+
+    locks = await db.get_locks(chat_id)
+    current = locks.get(lock_type, False)
+    new_state = not current
+
+    await db.set_lock(chat_id, lock_type, new_state)
+
+    # Reapply group permissions
+    locks_updated = await db.get_locks(chat_id)
+    await apply_group_permissions(client, chat_id, locks_updated)
+
+    # Update message
+    try:
+        await cb.message.edit_text(
+            build_locktypes_text(locks_updated),
+            reply_markup=build_locktypes_keyboard(locks_updated)
+        )
+    except Exception:
+        pass
+
+    status = "locked ✅" if new_state else "unlocked ❌"
+    await cb.answer(f"{lock_type} {status}", show_alert=False)
+
+
+# =========================================================
+# CALLBACK — Refresh
+# =========================================================
+
+@Client.on_callback_query(filters.regex(r"^lk_refresh$"))
+async def lk_refresh_cb(client, cb):
+    chat_id = cb.message.chat.id
+    if not await is_admin(client, chat_id, cb.from_user.id):
+        return await cb.answer("❌ Admin only.", show_alert=True)
+
+    locks = await db.get_locks(chat_id)
+    try:
+        await cb.message.edit_text(
+            build_locktypes_text(locks),
+            reply_markup=build_locktypes_keyboard(locks)
+        )
+    except Exception:
+        pass
+    await cb.answer("🔄 Refreshed")
+
+
+# =========================================================
+# CALLBACK — Unlock All
+# =========================================================
+
+@Client.on_callback_query(filters.regex(r"^lk_unlockall$"))
+async def lk_unlockall_cb(client, cb):
+    chat_id = cb.message.chat.id
+    if not await is_admin(client, chat_id, cb.from_user.id):
+        return await cb.answer("❌ Admin only.", show_alert=True)
+
+    for lt in LOCK_TYPES:
+        await db.set_lock(chat_id, lt, False)
+
+    locks = await db.get_locks(chat_id)
+    await apply_group_permissions(client, chat_id, locks)
+
+    try:
+        await cb.message.edit_text(
+            build_locktypes_text(locks),
+            reply_markup=build_locktypes_keyboard(locks)
+        )
+    except Exception:
+        pass
+    await cb.answer("🔓 All locks removed")
+
+
+# =========================================================
+# /lock COMMAND
 # =========================================================
 
 @Client.on_message(filters.command("lock") & filters.group)
@@ -133,7 +258,6 @@ async def lock_cmd(client, message):
     if invalid:
         return await message.reply_text(f"❌ Invalid types: {', '.join(invalid)}")
 
-    # Special: reset all custom actions
     if "all" in types and not reason and not custom_action and "###" in raw:
         for t in LOCK_TYPES:
             await db.set_chat_field(message.chat.id, f"lock_reason_{t}", None)
@@ -147,7 +271,6 @@ async def lock_cmd(client, message):
         if custom_action:
             await db.set_chat_field(message.chat.id, f"lock_action_{t}", custom_action)
 
-    # Apply native permissions
     locks = await db.get_locks(message.chat.id)
     applied = await apply_group_permissions(client, message.chat.id, locks)
 
@@ -157,22 +280,17 @@ async def lock_cmd(client, message):
     if custom_action:
         txt += f"\n⚡ Action: {custom_action}"
 
-    # Inform about native vs text locks
     native_types = [t for t in types if t in NATIVE_LOCKS]
-    text_types = [t for t in types if t in TEXT_LOCKS and t != "all"]
-
-    if native_types and not applied:
-        txt += f"\n\n⚠️ <i>Could not update group permissions. Check bot admin rights.</i>"
+    if native_types and applied:
+        txt += f"\n\n✅ <i>Group permissions updated</i>"
     elif native_types:
-        txt += f"\n\n✅ <i>Group permissions updated for: {', '.join(native_types)}</i>"
-    if text_types:
-        txt += f"\n\n🗑️ <i>Messages will be deleted for: {', '.join(text_types)}</i>"
+        txt += f"\n\n⚠️ <i>Could not update group permissions</i>"
 
     await message.reply_text(txt)
 
 
 # =========================================================
-# UNLOCK
+# /unlock COMMAND
 # =========================================================
 
 @Client.on_message(filters.command("unlock") & filters.group)
@@ -191,7 +309,6 @@ async def unlock_cmd(client, message):
     for t in types:
         await db.set_lock(message.chat.id, t, False)
 
-    # Reapply native permissions
     locks = await db.get_locks(message.chat.id)
     await apply_group_permissions(client, message.chat.id, locks)
 
@@ -199,7 +316,7 @@ async def unlock_cmd(client, message):
 
 
 # =========================================================
-# LIST LOCKS
+# /locks COMMAND
 # =========================================================
 
 @Client.on_message(filters.command("locks") & filters.group)
@@ -209,33 +326,10 @@ async def locks_cmd(client, message):
               if k not in ("_id", "chat_id") and v is True]
     if not active:
         return await message.reply_text("🔓 No active locks.")
-
-    native = [x for x in active if x in NATIVE_LOCKS]
-    text = [x for x in active if x in TEXT_LOCKS]
-
-    txt = "🔒 <b>Active Locks:</b>\n\n"
-    if native:
-        txt += f"<b>Group Permissions:</b>\n"
-        txt += ", ".join(f"<code>{x}</code>" for x in native) + "\n\n"
-    if text:
-        txt += f"<b>Message Delete:</b>\n"
-        txt += ", ".join(f"<code>{x}</code>" for x in text)
-
-    await message.reply_text(txt)
-
-
-# =========================================================
-# LOCK TYPES
-# =========================================================
-
-@Client.on_message(filters.command("locktypes"))
-async def locktypes_cmd(client, message):
-    txt = "<b>🔒 Lock Types</b>\n\n"
-    txt += "<b>🛡️ Group Permission Locks:</b>\n"
-    txt += ", ".join(f"<code>{t}</code>" for t in sorted(NATIVE_LOCKS.keys())) + "\n\n"
-    txt += "<b>🗑️ Message Delete Locks:</b>\n"
-    txt += ", ".join(f"<code>{t}</code>" for t in sorted(TEXT_LOCKS))
-    await message.reply_text(txt)
+    await message.reply_text(
+        "🔒 <b>Active Locks:</b>\n" +
+        ", ".join(f"<code>{x}</code>" for x in active)
+    )
 
 
 # =========================================================
@@ -308,7 +402,7 @@ async def rmallowlistall_cmd(client, message):
 
 
 # =========================================================
-# APPLY CUSTOM LOCK ACTION
+# APPLY CUSTOM ACTION
 # =========================================================
 
 async def apply_lock_action(client, message, action, reason):
@@ -334,7 +428,7 @@ async def apply_lock_action(client, message, action, reason):
 
 
 # =========================================================
-# LOCK WATCHER — Only for NON-native locks
+# LOCK WATCHER
 # =========================================================
 
 @Client.on_message(filters.group & ~filters.service, group=40)
@@ -360,15 +454,11 @@ async def lock_watcher(client, message):
 
     matched_type = None
 
-    # ===== NON-NATIVE LOCKS (message delete) =====
-
-    # all / text
     if locked("all"):
         matched_type = "all"
     elif locked("text") and (message.text or message.caption):
         matched_type = "text"
 
-    # Forward
     if not matched_type:
         if locked("forward") and message.forward_date:
             matched_type = "forward"
@@ -379,14 +469,12 @@ async def lock_watcher(client, message):
         elif locked("forwardbot") and message.forward_from and message.forward_from.is_bot:
             matched_type = "forwardbot"
 
-    # Bot messages
     if not matched_type:
         if locked("bot") and message.from_user and message.from_user.is_bot:
             matched_type = "bot"
         if locked("guestbot") and message.via_bot:
             matched_type = "guestbot"
 
-    # Patterns
     if not matched_type and text:
         if locked("email") and re.search(r"\S+@\S+\.\S+", text):
             matched_type = "email"
@@ -406,7 +494,6 @@ async def lock_watcher(client, message):
             if not is_allowed():
                 matched_type = "command"
 
-    # Emoji
     if not matched_type and text:
         if locked("emojionly"):
             stripped = re.sub(r"[\U0001F300-\U0001F9FF\U0001F600-\U0001F64F]", "", text).strip()
@@ -418,7 +505,6 @@ async def lock_watcher(client, message):
                     matched_type = "emojicustom"
                     break
 
-    # Language / script
     if not matched_type and text:
         if locked("rtl") and re.search(r"[\u0590-\u08FF]", text):
             matched_type = "rtl"
@@ -429,7 +515,6 @@ async def lock_watcher(client, message):
         elif locked("zalgo") and re.search(r"[\u0300-\u036F]{3,}", text):
             matched_type = "zalgo"
 
-    # Others
     if not matched_type:
         if locked("contact") and message.contact:
             matched_type = "contact"
@@ -446,13 +531,11 @@ async def lock_watcher(client, message):
     if not matched_type:
         return
 
-    # Delete
     try:
         await message.delete()
     except Exception:
         pass
 
-    # Custom action
     action = chat.get(f"lock_action_{matched_type}") or chat.get("lock_action_all")
     reason = chat.get(f"lock_reason_{matched_type}") or chat.get("lock_reason_all")
 
