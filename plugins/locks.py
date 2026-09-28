@@ -2,13 +2,9 @@ from pyrogram import Client, filters
 from database import db
 from utils.permissions import is_admin
 
-LOCK_TYPES = [
-    "links", "url", "invitelink", "photo", "video", "audio", "voice",
+LOCK_TYPES = ["links", "url", "invitelink", "photo", "video", "audio", "voice",
     "document", "sticker", "gif", "animation", "contact", "location",
-    "poll", "game", "forward", "bot", "button", "inline", "channel",
-    "rtl", "arabic", "english", "persian", "russian", "chinese",
-    "japanese", "emojicustom"
-]
+    "poll", "game", "forward", "bot", "button", "inline", "channel"]
 
 
 @Client.on_message(filters.command("lock") & filters.group)
@@ -16,7 +12,7 @@ async def lock_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
     if len(message.command) < 2:
-        return await message.reply_text("Usage: /lock <type>\nTypes: " + ", ".join(LOCK_TYPES))
+        return await message.reply_text("Usage: /lock <type>")
     lt = message.command[1].lower()
     if lt not in LOCK_TYPES:
         return await message.reply_text(f"❌ Unknown lock: {lt}")
@@ -38,7 +34,7 @@ async def unlock_cmd(client, message):
 @Client.on_message(filters.command("locks") & filters.group)
 async def locks_cmd(client, message):
     doc = await db.get_locks(message.chat.id)
-    active = [k for k, v in doc.items() if k != "_id" and k != "chat_id" and v]
+    active = [k for k, v in doc.items() if k not in ("_id", "chat_id") and v]
     if not active:
         return await message.reply_text("No active locks.")
     await message.reply_text("🔒 <b>Active Locks:</b>\n" + "\n".join(f"• {x}" for x in active))
@@ -46,4 +42,4 @@ async def locks_cmd(client, message):
 
 @Client.on_message(filters.command("locktypes"))
 async def locktypes_cmd(client, message):
-    await message.reply_text("<b>Available lock types:</b>\n" + ", ".join(LOCK_TYPES))
+    await message.reply_text("<b>Lock types:</b>\n" + ", ".join(LOCK_TYPES))
