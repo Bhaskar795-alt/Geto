@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import ChatPermissions
 from database import db
@@ -97,15 +98,17 @@ async def floodmode_cmd(client, message):
         return await message.reply_text("❌ Admin only.")
     if len(message.command) < 2:
         return await message.reply_text(
-            "Usage: /floodmode <ban|mute|kick|tban|tmute> [duration]\n"
-            "Example: /floodmode tban 3d"
+            "Usage: /floodmode <ban|mute|kick|tban|tmute|sban|smute|skick> [duration]\n"
+            "Example: /floodmode tban 3d\n"
+            "Silent: /floodmode sban 1h"
         )
     action = message.command[1].lower()
-    if action not in ("ban", "mute", "kick", "tban", "tmute"):
+    base_action = action.lstrip("s")
+    if base_action not in ("ban", "mute", "kick", "tban", "tmute"):
         return await message.reply_text("❌ Invalid action.")
 
     duration_str = ""
-    if action in ("tban", "tmute"):
+    if base_action in ("tban", "tmute"):
         if len(message.command) < 3:
             return await message.reply_text("❌ Need duration (e.g. 3d, 12h).")
         secs = parse_duration(message.command[2])
@@ -163,7 +166,6 @@ async def flood_watcher(client, message):
         key = f"flood_timed_{uid}"
         data = chat.get(key) or {"first": now, "count": 0}
         if now - data["first"] > time_sec:
-            # Reset window
             data = {"first": now, "count": 1}
         else:
             data["count"] += 1
@@ -175,13 +177,40 @@ async def flood_watcher(client, message):
 
     # --- Consecutive messages ---
     count = await db.add_flood(message.chat.id, uid)
+    if count is None:
+        count = 0
     if count >= limit:
         await _apply_action(client, message, uid, action, action_dur, clear)
         await db.reset_flood(message.chat.id, uid)
 
 
+# ---------- APPLY ACTION (Silent Support) ----------
+
 async def _apply_action(client, message, uid, action, action_dur, clear):
-    from datetime import datetime, timedelta
+    silent = False
+    duration = ""
+
+    # Parse silent prefix
+    if action.startswith("s"):
+        silent = True
+        action = action[1:]
+
+    # Parse duration (if in action)
+    if " " in action:
+        parts = action.split(None, 1)
+        action = parts[0]
+        if not duration:
+            duration = parts[1]
+
+    # Use action_dur from command if set
+    if not duration and action_dur:
+        duration = action_dur
+
+    chat = await db.get_chat(message.chat.id)
+    log_channel = chat.get("log_channel", 0)
+    silent_enabled = chat.get("silentactions", False)
+    is_silent = silent and silent_enabled and log_channel
+
     try:
         if clear:
             try:
@@ -189,36 +218,55 @@ async def _apply_action(client, message, uid, action, action_dur, clear):
             except Exception:
                 pass
 
+        mention = message.from_user.mention
+
         if action == "mute":
-            await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS)
-            await db.mute_user(message.chat.id, uid, 0, "flood")
-            await message.reply_text(f"🔇 {message.from_user.mention} muted for flooding.")
+            if duration:
+                secs = parse_duration(duration)
+                until = datetime.now() + timedelta(seconds=secs)
+                await client.restrict_chat_member(
+                    message.chat.id, uid, MUTE_PERMS, until_date=until
+                )
+                await db.mute_user(message.chat.id, uid, int(until.timestamp()), duration)
+            else:
+                await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS)
+                await db.mute_user(message.chat.id, uid, 0, "flood")
+            if not is_silent:
+                await message.reply_text(f"🔇 {mention} muted for flooding.")
 
         elif action == "ban":
-            await client.ban_chat_member(message.chat.id, uid)
-            await message.reply_text(f"🔨 {message.from_user.mention} banned for flooding.")
+            if duration:
+                secs = parse_duration(duration)
+                until = datetime.now() + timedelta(seconds=secs)
+                await client.ban_chat_member(message.chat.id, uid, until_date=until)
+            else:
+                await client.ban_chat_member(message.chat.id, uid)
+            if not is_silent:
+                await message.reply_text(f"🔨 {mention} banned for flooding.")
 
         elif action == "kick":
             await client.ban_chat_member(message.chat.id, uid)
             await client.unban_chat_member(message.chat.id, uid)
-            await message.reply_text(f"👢 {message.from_user.mention} kicked for flooding.")
+            if not is_silent:
+                await message.reply_text(f"👢 {mention} kicked for flooding.")
 
         elif action == "tban":
-            secs = parse_duration(action_dur) if action_dur else 3600
+            secs = parse_duration(duration) if duration else 3600
             until = datetime.now() + timedelta(seconds=secs)
             await client.ban_chat_member(message.chat.id, uid, until_date=until)
-            await message.reply_text(
-                f"🔨 {message.from_user.mention} temp-banned for {action_dur} (flood)."
-            )
+            if not is_silent:
+                await message.reply_text(f"🔨 {mention} temp-banned for {duration} (flood).")
 
         elif action == "tmute":
-            secs = parse_duration(action_dur) if action_dur else 3600
+            secs = parse_duration(duration) if duration else 3600
             until = datetime.now() + timedelta(seconds=secs)
-            await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS, until_date=until)
-            await db.mute_user(message.chat.id, uid, int(until.timestamp()), action_dur)
-            await message.reply_text(
-                f"🔇 {message.from_user.mention} temp-muted for {action_dur} (flood)."
+            await client.restrict_chat_member(
+                message.chat.id, uid, MUTE_PERMS, until_date=until
             )
+            await db.mute_user(message.chat.id, uid, int(until.timestamp()), duration)
+            if not is_silent:
+                await message.reply_text(f"🔇 {mention} temp-muted for {duration} (flood).")
+
     except Exception as e:
         try:
             await message.reply_text(f"❌ Flood action error: {e}")
