@@ -35,11 +35,8 @@ async def send_captcha(client, message):
         if mode == "button":
             buttons = InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ I'm not a robot",
-                    callback_data=f"captcha_verify:{message.chat.id}:{user.id}")
-            ]])
-            await message.reply_text(
-                f"👋 {user.mention}, please verify you're human.",
-                reply_markup=buttons)
+                    callback_data=f"captcha_verify:{message.chat.id}:{user.id}")]])
+            await message.reply_text(f"👋 {user.mention}, please verify.", reply_markup=buttons)
         elif mode == "math":
             a, b = random.randint(2, 9), random.randint(2, 9)
             await db.save_captcha(message.chat.id, user.id, str(a + b))
@@ -65,7 +62,5 @@ async def captcha_text_check(client, message):
         await db.delete_captcha(message.chat.id, message.from_user.id)
         await message.reply_text(f"✅ {message.from_user.mention} verified!")
     else:
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        try: await message.delete()
+        except: pass
