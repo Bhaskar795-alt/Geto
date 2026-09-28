@@ -379,7 +379,7 @@ def build_help_back_keyboard():
 # /start COMMAND
 # =========================================================
 
-@Client.on_message(filters.command("start") & filters.private)
+@Client.on_message(filters.command("start"))
 async def start_cmd(client, message):
     await db.add_user(message.from_user.id, message.from_user.first_name)
     btn = InlineKeyboardMarkup([
