@@ -58,6 +58,11 @@ async def add_filter(client, message):
             msg_type, file_id = "document", r.document.file_id
         elif r.animation:
             msg_type, file_id = "animation", r.animation.file_id
+        # If admin used /filter <trigger> <caption> as reply, use that text
+        if len(message.command) > 2:
+            extra = message.text.split(None, 2)[2]
+            if extra:
+                text = extra
     else:
         rest = raw_text[len(raw_trigger):].strip()
         text = rest
@@ -151,23 +156,75 @@ async def filter_watcher(client, message):
         clean, markup = parse_buttons(reply)
 
         try:
+            # TEXT
             if fdoc["msg_type"] == "text":
                 await message.reply_text(clean or "…", reply_markup=markup)
+
+            # PHOTO
             elif fdoc["msg_type"] == "photo":
                 await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+
+            # VIDEO
             elif fdoc["msg_type"] == "video":
                 await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
-            elif fdoc["msg_type"] == "sticker":
-                await message.reply_sticker(fdoc["file_id"])
-                if clean:
-                    await message.reply_text(clean, reply_markup=markup)
+
+            # DOCUMENT
             elif fdoc["msg_type"] == "document":
                 await message.reply_document(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+
+            # ANIMATION (GIF)
             elif fdoc["msg_type"] == "animation":
                 await message.reply_animation(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+
+            # STICKER — 2 messages: sticker + text with buttons
+            elif fdoc["msg_type"] == "sticker":
+                sent = await message.reply_sticker(fdoc["file_id"])
+                if clean or markup:
+                    await sent.reply_text(clean or "📎", reply_markup=markup)
+
         except Exception:
             try:
                 await message.reply_text(clean or "…", reply_markup=markup)
             except Exception:
                 pass
         break
+
+
+# ============ FORCE / NOFORMAT ============
+
+@Client.on_message(filters.group & filters.text & ~filters.service, group=6)
+async def filter_force_noformat(client, message):
+    text = message.text.strip()
+
+    if text.endswith(" force"):
+        trigger = text[:-6].strip().lower()
+        fdoc = await db.get_filter(message.chat.id, trigger)
+        if fdoc:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            reply = fdoc.get("reply") or ""
+            clean, markup = parse_buttons(reply)
+            try:
+                if fdoc["msg_type"] == "text":
+                    await message.reply_text(clean or "…", reply_markup=markup)
+                elif fdoc["msg_type"] == "photo":
+                    await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                elif fdoc["msg_type"] == "video":
+                    await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                elif fdoc["msg_type"] == "sticker":
+                    sent = await message.reply_sticker(fdoc["file_id"])
+                    if clean or markup:
+                        await sent.reply_text(clean or "📎", reply_markup=markup)
+            except Exception:
+                pass
+        return
+
+    if text.endswith(" noformat"):
+        trigger = text[:-9].strip().lower()
+        fdoc = await db.get_filter(message.chat.id, trigger)
+        if fdoc:
+            reply = fdoc.get("reply") or ""
+            await message.reply_text(f"<b>Filter</b> <code>{trigger}</code>\n\n{reply}")
+        return
