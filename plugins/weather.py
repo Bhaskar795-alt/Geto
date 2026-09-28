@@ -1,5 +1,6 @@
-# pip install requests
 import aiohttp
+from pyrogram import Client, filters
+
 
 @Client.on_message(filters.command("weather"))
 async def weather_cmd(client, message):
