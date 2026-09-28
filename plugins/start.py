@@ -379,16 +379,25 @@ def build_help_back_keyboard():
 async def start_cmd(client, message):
     await db.add_user(message.from_user.id, message.from_user.first_name)
     btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚜️𝐓ᴀᴩ 𝐓ᴏ 𝐒ᴇᴇ 𝐌ᴀɢɪᴄ🫰",
-            url=f"https://t.me/{Config.BOT_USERNAME}?startgroup=true")],
-        [InlineKeyboardButton("𝐇ᴇʟᴩ", callback_data="help_home"),
-         InlineKeyboardButton("👑 𝐎ᴡɴᴇʀ", url=f"https://t.me/{Config.OWNER_USERNAME}")
+        [
+            InlineKeyboardButton(
+                "⚜️𝐓ᴀᴩ 𝐓ᴏ 𝐒ᴇᴇ 𝐌ᴀɢɪᴄ🫰 🪄",
+                url=f"https://t.me/{Config.BOT_USERNAME}?startgroup=true"
+            )
+        ],
+        [
+            InlineKeyboardButton("𝐇ᴇʟᴩ", callback_data="help_home"),
+            InlineKeyboardButton(
+                "👑  𝐎ᴡɴᴇʀ",
+                url=f"https://t.me/{Config.OWNER_USERNAME}"
+            )
+        ]
     ])
     await message.reply_text(
-        f"🌹 <b>Welcome to {Config.BOT_NAME}!</b>\n\n"
-        f"Hi {message.from_user.mention}!\n\n"
-        f"I'm a powerful group management bot.\n"
-        f"Use /help to see all my features.",
+        f"🌹 <b>𝐖ᴇʟᴄᴏᴍᴇ to {Config.BOT_NAME}!</b>\n\n"
+        f"𝐇ɪ {message.from_user.mention}!\n\n"
+        f"𝐈'ᴀᴍ ᴀ 𝐏ᴏᴡᴇʀꜰᴜʟ 𝐆ʀᴜᴏᴩ 𝐌ᴀɴᴀɢᴇᴍᴇɴᴛ 𝐁ᴏᴛ.\n"
+        f"𝐔ꜱᴇ /help 𝐓ᴏ 𝐒ᴇᴇ 𝐓ᴏ 𝐒ᴇᴇ 𝐀ʟʟ 𝐂ᴏᴍᴍᴏɴᴅ.",
         reply_markup=btn
     )
 
