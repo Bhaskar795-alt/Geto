@@ -1,4 +1,3 @@
-import time
 from pyrogram import Client, filters
 from pyrogram.types import ChatPermissions
 from database import db
@@ -66,10 +65,9 @@ async def flood_watcher(client, message):
             if action == "mute":
                 await client.restrict_chat_member(message.chat.id, message.from_user.id, MUTE_PERMS)
                 await db.mute_user(message.chat.id, message.from_user.id, 0, "flood")
-                await message.reply_text(f"🔇 {message.from_user.mention} muted for flooding.")
+                await message.reply_text(f"🔇 Muted for flooding.")
             elif action == "ban":
                 await client.ban_chat_member(message.chat.id, message.from_user.id)
-                await message.reply_text(f"🔨 {message.from_user.mention} banned for flooding.")
             elif action == "kick":
                 await client.ban_chat_member(message.chat.id, message.from_user.id)
                 await client.unban_chat_member(message.chat.id, message.from_user.id)
