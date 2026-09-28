@@ -1,9 +1,9 @@
-# Requires: pip install nsfw-detector  (or similar)
-# Simple keyword-based version:
 from pyrogram import Client, filters
 from database import db
 from utils.permissions import is_admin
-NSFW_WORDS = ["porn", "xxx", "nsfw", "sex", "nude"]  # extend karo
+
+NSFW_WORDS = ["porn", "xxx", "nsfw", "sex", "nude"]
+
 
 @Client.on_message(filters.group & filters.text, group=15)
 async def antinsfw(client, message):
@@ -14,7 +14,7 @@ async def antinsfw(client, message):
         if w in text:
             try: await message.delete()
             except: pass
-            await message.reply_text(f"🚫 NSFW content removed.")
+            await message.reply_text("🚫 NSFW content removed.")
             return
 
 
