@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import ChatPermissions
 from database import db
@@ -22,21 +21,20 @@ async def warn_cmd(client, message):
     action = chat.get("warn_action", "mute")
     await message.reply_text(
         f"⚠️ <b>Warned</b> {mention_html(uid, name)}\n"
-        f"📝 {reason}\n"
-        f"🔢 <b>Total:</b> {count}/{limit}")
+        f"📝 {reason}\n🔢 <b>Total:</b> {count}/{limit}")
     if count >= limit:
         try:
             if action == "mute":
                 await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS)
-                await db.mute_user(message.chat.id, uid, 0, f"Warn limit reached ({limit})")
-                await message.reply_text(f"🔇 Auto-muted {mention_html(uid, name)} (warn limit reached)")
+                await db.mute_user(message.chat.id, uid, 0, f"Warn limit ({limit})")
+                await message.reply_text(f"🔇 Auto-muted (warn limit reached)")
             elif action == "ban":
                 await client.ban_chat_member(message.chat.id, uid)
-                await message.reply_text(f"🔨 Auto-banned {mention_html(uid, name)} (warn limit reached)")
+                await message.reply_text(f"🔨 Auto-banned (warn limit)")
             elif action == "kick":
                 await client.ban_chat_member(message.chat.id, uid)
                 await client.unban_chat_member(message.chat.id, uid)
-                await message.reply_text(f"👢 Auto-kicked {mention_html(uid, name)}")
+                await message.reply_text(f"👢 Auto-kicked")
         except Exception as e:
             await message.reply_text(f"❌ Auto action failed: {e}")
 
