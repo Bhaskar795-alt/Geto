@@ -124,7 +124,7 @@ async def save_filter(chat_id, keyword, reply, msg_type="text", file_id="", butt
 async def get_filter(chat_id, keyword):
     return await filters_c.find_one({"chat_id": chat_id, "keyword": keyword.lower()})
 
-async def get_all_filters(chat_id):
+def get_all_filters(chat_id):
     return filters_c.find({"chat_id": chat_id})
 
 async def delete_filter(chat_id, keyword):
