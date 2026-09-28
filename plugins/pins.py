@@ -7,7 +7,7 @@ async def pin_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
     if not message.reply_to_message:
-        return await message.reply_text("Reply to a message.")
+        return await message.reply_text("❌ Reply to a message to pin it.")
     try:
         await message.reply_to_message.pin(disable_notification=False)
         await message.reply_text("📌 Pinned.")
@@ -20,8 +20,22 @@ async def unpin_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
     try:
-        await client.unpin_chat_message(message.chat.id)
-        await message.reply_text("📌 Unpinned.")
+        if message.reply_to_message:
+            await client.unpin_chat_message(
+                chat_id=message.chat.id,
+                message_id=message.reply_to_message.id
+            )
+            await message.reply_text("📌 Unpinned.")
+        else:
+            chat = await client.get_chat(message.chat.id)
+            if chat.pinned_message:
+                await client.unpin_chat_message(
+                    chat_id=message.chat.id,
+                    message_id=chat.pinned_message.id
+                )
+                await message.reply_text("📌 Latest pinned message unpinned.")
+            else:
+                await message.reply_text("❌ No pinned message found.")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -29,10 +43,10 @@ async def unpin_cmd(client, message):
 @Client.on_message(filters.command("pinned") & filters.group)
 async def pinned_cmd(client, message):
     try:
-        p = await client.get_chat(message.chat.id)
-        if p.pinned_message:
-            await p.pinned_message.forward(message.chat.id)
+        chat = await client.get_chat(message.chat.id)
+        if chat.pinned_message:
+            await chat.pinned_message.forward(message.chat.id)
         else:
-            await message.reply_text("No pinned message.")
+            await message.reply_text("❌ No pinned message.")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
