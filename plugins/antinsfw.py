@@ -1,6 +1,8 @@
 # Requires: pip install nsfw-detector  (or similar)
 # Simple keyword-based version:
-
+from pyrogram import Client, filters
+from database import db
+from utils.permissions import is_admin
 NSFW_WORDS = ["porn", "xxx", "nsfw", "sex", "nude"]  # extend karo
 
 @Client.on_message(filters.group & filters.text, group=15)
