@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import ChatPermissions, ChatPrivileges
 
 from database import db
@@ -34,13 +34,12 @@ UNMUTE_PERMS = ChatPermissions(
 # =========================================================
 
 def get_admin_role(status):
-    value = getattr(status, "value", None)
-
-    if value is not None:
-        status = value
+    if hasattr(status, "value"):
+        status = status.value
 
     status = str(status).lower().replace(
-        "chatmemberstatus.", ""
+        "chatmemberstatus.",
+        ""
     )
 
     if status in ("owner", "creator"):
@@ -60,14 +59,21 @@ async def is_user_admin(client, chat_id, user_id):
             user_id
         )
 
-        status = str(
-            getattr(member.status, "value", member.status)
-        ).lower()
+        status = getattr(member, "status", "")
 
-        return (
-            "administrator" in status
-            or "owner" in status
-            or "creator" in status
+        if hasattr(status, "value"):
+            status = status.value
+
+        status = str(status).lower().replace(
+            "chatmemberstatus.",
+            ""
+        )
+
+        return status in (
+            "administrator",
+            "admin",
+            "owner",
+            "creator"
         )
 
     except Exception:
@@ -117,23 +123,16 @@ async def ban_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
             "❌ Reply to a user or give a valid user."
         )
 
-    reason = " ".join(
-        message.command[2:]
-    ) or "No reason"
+    reason = " ".join(message.command[2:]) or "No reason"
 
     try:
         await client.ban_chat_member(
@@ -161,9 +160,7 @@ async def ban_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("dban") & filters.group)
@@ -174,9 +171,7 @@ async def dban_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     if not message.reply_to_message:
         return await message.reply_text(
@@ -207,9 +202,7 @@ async def dban_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("sban") & filters.group)
@@ -220,14 +213,9 @@ async def sban_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -265,9 +253,7 @@ async def sban_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("tban") & filters.group)
@@ -278,37 +264,28 @@ async def tban_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     if len(message.command) < 3:
         return await message.reply_text(
             "Usage: /tban <user> <duration>"
         )
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
             "❌ Reply to a user or give a valid user."
         )
 
-    secs = parse_duration(
-        message.command[2]
-    )
+    secs = parse_duration(message.command[2])
 
     if secs == 0:
         return await message.reply_text(
             "❌ Invalid duration."
         )
 
-    until = datetime.now() + timedelta(
-        seconds=secs
-    )
+    until = datetime.now() + timedelta(seconds=secs)
 
     try:
         await client.ban_chat_member(
@@ -337,9 +314,7 @@ async def tban_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("unban") & filters.group)
@@ -350,14 +325,9 @@ async def unban_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -389,9 +359,7 @@ async def unban_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 # =========================================================
@@ -406,14 +374,9 @@ async def mute_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -453,9 +416,7 @@ async def mute_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("dmute") & filters.group)
@@ -466,9 +427,7 @@ async def dmute_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     if not message.reply_to_message:
         return await message.reply_text(
@@ -507,9 +466,7 @@ async def dmute_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("smute") & filters.group)
@@ -520,14 +477,9 @@ async def smute_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -573,9 +525,7 @@ async def smute_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("tmute") & filters.group)
@@ -586,37 +536,28 @@ async def tmute_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     if len(message.command) < 3:
         return await message.reply_text(
             "Usage: /tmute <user> <duration>"
         )
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
             "❌ Reply to a user or give a valid user."
         )
 
-    secs = parse_duration(
-        message.command[2]
-    )
+    secs = parse_duration(message.command[2])
 
     if secs == 0:
         return await message.reply_text(
             "❌ Invalid duration."
         )
 
-    until = datetime.now() + timedelta(
-        seconds=secs
-    )
+    until = datetime.now() + timedelta(seconds=secs)
 
     try:
         await client.restrict_chat_member(
@@ -653,9 +594,7 @@ async def tmute_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("unmute") & filters.group)
@@ -666,14 +605,9 @@ async def unmute_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -711,9 +645,7 @@ async def unmute_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("mutelist") & filters.group)
@@ -724,19 +656,14 @@ async def mutelist_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     import time
 
-    lines = [
-        "<b>🔇 Active Mutes:</b>\n"
-    ]
+    lines = ["<b>🔇 Active Mutes:</b>\n"]
 
-    async for d in db.get_mutelist(
-        message.chat.id
-    ):
+    async for d in db.get_mutelist(message.chat.id):
+
         until = d.get("until", 0)
 
         if until:
@@ -749,7 +676,6 @@ async def mutelist_cmd(client, message):
                 f"• <code>{d['user_id']}</code> "
                 f"— {rem}s left"
             )
-
         else:
             lines.append(
                 f"• <code>{d['user_id']}</code> "
@@ -757,13 +683,9 @@ async def mutelist_cmd(client, message):
             )
 
     if len(lines) == 1:
-        lines.append(
-            "<i>No active mutes.</i>"
-        )
+        lines.append("<i>No active mutes.</i>")
 
-    await message.reply_text(
-        "\n".join(lines)
-    )
+    await message.reply_text("\n".join(lines))
 
 
 # =========================================================
@@ -778,14 +700,9 @@ async def kick_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -822,9 +739,7 @@ async def kick_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("dkick") & filters.group)
@@ -835,9 +750,7 @@ async def dkick_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     if not message.reply_to_message:
         return await message.reply_text(
@@ -873,9 +786,7 @@ async def dkick_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("skick") & filters.group)
@@ -886,14 +797,9 @@ async def skick_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -936,9 +842,7 @@ async def skick_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 @Client.on_message(filters.command("kickme") & filters.group)
@@ -961,9 +865,7 @@ async def kickme_cmd(client, message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"❌ {e}"
-        )
+        await message.reply_text(f"❌ {e}")
 
 
 # =========================================================
@@ -978,23 +880,16 @@ async def promote_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
             "❌ Reply to a user or give a valid user."
         )
 
-    custom_title = " ".join(
-        message.command[2:]
-    )[:16] or ""
+    custom_title = " ".join(message.command[2:])[:16] or ""
 
     already_admin = await is_user_admin(
         client,
@@ -1090,7 +985,6 @@ async def promote_cmd(client, message):
                 "3. Save karo\n"
                 "4. Phir se try karo"
             )
-
         else:
             await message.reply_text(
                 f"❌ {error_str}"
@@ -1109,14 +1003,9 @@ async def demote_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
-    uid, name, _ = await resolve_user(
-        client,
-        message
-    )
+    uid, name, _ = await resolve_user(client, message)
 
     if not uid:
         return await message.reply_text(
@@ -1190,7 +1079,6 @@ async def demote_cmd(client, message):
                 "Bot ko <b>Add New Admins</b> "
                 "permission chahiye."
             )
-
         else:
             await message.reply_text(
                 f"❌ {error_str}"
@@ -1209,7 +1097,7 @@ async def admins_cmd(client, message):
 
         async for member in client.get_chat_members(
             message.chat.id,
-            filter="administrators"
+            filter=enums.ChatMembersFilter.ADMINISTRATORS
         ):
             admin_list.append(member)
 
@@ -1226,44 +1114,44 @@ async def admins_cmd(client, message):
             ""
         ]
 
-        for i, member in enumerate(
-            admin_list,
-            1
-        ):
+        for i, member in enumerate(admin_list, 1):
 
             user = member.user
 
-            # Full name
-            name = user.first_name or "Unknown"
+            first_name = user.first_name or ""
+            last_name = user.last_name or ""
 
-            if user.last_name:
-                name += f" {user.last_name}"
+            name = f"{first_name} {last_name}".strip()
 
-            # Username / mention
+            if not name:
+                name = "Unknown"
+
             if user.username:
                 user_text = f"@{user.username}"
             else:
-                user_text = user.mention
-
-            # Status
-            status = str(
-                getattr(
-                    member.status,
-                    "value",
-                    member.status
+                user_text = (
+                    f'<a href="tg://user?id={user.id}">'
+                    f'{name}</a>'
                 )
-            ).lower()
 
-            if (
-                "owner" in status
-                or "creator" in status
-            ):
+            # SAFE STATUS
+            status = getattr(member, "status", "")
+
+            if hasattr(status, "value"):
+                status = status.value
+
+            status = str(status).lower().replace(
+                "chatmemberstatus.",
+                ""
+            )
+
+            if status in ("owner", "creator"):
                 role = "👑 <b>Owner</b>"
             else:
                 role = "🛡️ <b>Admin</b>"
 
             lines.append(
-                f"{i}. {role}\n"
+                f"<b>{i}.</b> {role}\n"
                 f"   👤 {name}\n"
                 f"   🔗 {user_text}\n"
                 f"   🆔 <code>{user.id}</code>\n"
@@ -1296,7 +1184,7 @@ async def adminlist_cmd(client, message):
     try:
         async for member in client.get_chat_members(
             message.chat.id,
-            filter="administrators"
+            filter=enums.ChatMembersFilter.ADMINISTRATORS
         ):
 
             icon, role = get_admin_role(
@@ -1333,9 +1221,7 @@ async def admincache_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     try:
         import time
@@ -1344,20 +1230,24 @@ async def admincache_cmd(client, message):
 
         async for member in client.get_chat_members(
             message.chat.id,
-            filter="administrators"
+            filter=enums.ChatMembersFilter.ADMINISTRATORS
         ):
 
-            status = getattr(
-                member.status,
-                "value",
-                member.status
+            status = getattr(member, "status", "")
+
+            if hasattr(status, "value"):
+                status = status.value
+
+            status = str(status).lower().replace(
+                "chatmemberstatus.",
+                ""
             )
 
             admins.append({
                 "user_id": member.user.id,
                 "name": member.user.first_name or "",
                 "username": member.user.username or "",
-                "status": str(status)
+                "status": status
             })
 
         await db.set_chat_field(
@@ -1397,9 +1287,7 @@ async def anonadmin_cmd(client, message):
         message.chat.id,
         message.from_user.id
     ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+        return await message.reply_text("❌ Admin only.")
 
     if len(message.command) < 2:
 
@@ -1420,12 +1308,7 @@ async def anonadmin_cmd(client, message):
 
     val = message.command[1].lower()
 
-    if val in (
-        "yes",
-        "on",
-        "true",
-        "1"
-    ):
+    if val in ("yes", "on", "true", "1"):
 
         await db.set_chat_field(
             message.chat.id,
@@ -1437,12 +1320,7 @@ async def anonadmin_cmd(client, message):
             "✅ Anonymous admin: ON"
         )
 
-    elif val in (
-        "no",
-        "off",
-        "false",
-        "0"
-    ):
+    elif val in ("no", "off", "false", "0"):
 
         await db.set_chat_field(
             message.chat.id,
@@ -1465,132 +1343,61 @@ async def anonadmin_cmd(client, message):
 # ADMIN ERROR
 # =========================================================
 
-# =========================================================
-# ADMINS — COMPLETE ADMIN LIST
-# =========================================================
+@Client.on_message(filters.command("adminerror") & filters.group)
+async def adminerror_cmd(client, message):
 
-@Client.on_message(filters.command("admins") & filters.group)
-async def admins_cmd(client, message):
+    if not await is_admin(
+        client,
+        message.chat.id,
+        message.from_user.id
+    ):
+        return await message.reply_text("❌ Admin only.")
 
-    try:
-        admin_list = []
+    if len(message.command) < 2:
 
-        async for member in client.get_chat_members(
-            message.chat.id,
-            filter="administrators"
-        ):
-            admin_list.append(member)
-
-        if not admin_list:
-            return await message.reply_text(
-                "❌ <b>Admin list nahi mili.</b>"
-            )
-
-        lines = [
-            "👑 <b>GROUP ADMINS</b>",
-            "",
-            f"👥 <b>Total Admins:</b> "
-            f"<code>{len(admin_list)}</code>",
-            ""
-        ]
-
-        for i, member in enumerate(admin_list, 1):
-
-            user = member.user
-
-            # =================================================
-            # FULL NAME
-            # =================================================
-
-            first_name = user.first_name or ""
-            last_name = user.last_name or ""
-
-            name = f"{first_name} {last_name}".strip()
-
-            if not name:
-                name = "Unknown"
-
-            # =================================================
-            # USERNAME / MENTION
-            # =================================================
-
-            if user.username:
-                user_text = f"@{user.username}"
-            else:
-                user_text = (
-                    f'<a href="tg://user?id={user.id}">'
-                    f'{name}</a>'
-                )
-
-            # =================================================
-            # STATUS
-            # IMPORTANT:
-            # Pyrogram version ke according member.status
-            # string ya enum dono ho sakta hai.
-            # =================================================
-
-            status = getattr(member, "status", "")
-
-            if hasattr(status, "value"):
-                status = status.value
-
-            status = str(status).lower()
-
-            # Remove enum prefix if present
-            status = status.replace(
-                "chatmemberstatus.",
-                ""
-            )
-
-            # =================================================
-            # ROLE
-            # =================================================
-
-            if status in (
-                "owner",
-                "creator"
-            ):
-                role = "👑 <b>Owner</b>"
-
-            elif status in (
-                "administrator",
-                "admin"
-            ):
-                role = "🛡️ <b>Admin</b>"
-
-            else:
-                # Safety fallback
-                if (
-                    "owner" in status
-                    or "creator" in status
-                ):
-                    role = "👑 <b>Owner</b>"
-                else:
-                    role = "🛡️ <b>Admin</b>"
-
-            # =================================================
-            # ADD ADMIN TO LIST
-            # =================================================
-
-            lines.append(
-                f"<b>{i}.</b> {role}\n"
-                f"   👤 {name}\n"
-                f"   🔗 {user_text}\n"
-                f"   🆔 <code>{user.id}</code>\n"
-            )
-
-        # =====================================================
-        # SEND RESULT
-        # =====================================================
-
-        await message.reply_text(
-            "\n".join(lines),
-            disable_web_page_preview=True
+        chat = await db.get_chat(
+            message.chat.id
         )
 
-    except Exception as e:
+        state = chat.get(
+            "adminerror",
+            True
+        )
+
+        return await message.reply_text(
+            f"📋 <b>Admin Error Messages:</b> "
+            f"{'ON' if state else 'OFF'}\n"
+            f"Usage: /adminerror yes|no"
+        )
+
+    val = message.command[1].lower()
+
+    if val in ("yes", "on", "true", "1"):
+
+        await db.set_chat_field(
+            message.chat.id,
+            "adminerror",
+            True
+        )
 
         await message.reply_text(
-            "❌ <b>Admin list error:</b>\n"
-            f"<code>{e}</code>"
+            "✅ Admin error messages: ON"
+        )
+
+    elif val in ("no", "off", "false", "0"):
+
+        await db.set_chat_field(
+            message.chat.id,
+            "adminerror",
+            False
+        )
+
+        await message.reply_text(
+            "✅ Admin error messages: OFF"
+        )
+
+    else:
+
+        await message.reply_text(
+            "❌ Usage: /adminerror yes|no"
         )
