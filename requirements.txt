@@ -7,3 +7,4 @@ aiohttp==3.9.1
 pillow==11.3.0
 deep-translator==1.11.4
 qrcode[pil]==7.4.2
+requests==2.31.0
