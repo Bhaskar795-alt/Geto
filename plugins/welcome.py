@@ -65,10 +65,15 @@ async def welcome_toggle(client, message):
     await message.reply_text(f"✅ Welcome: {'ON' if state else 'OFF'}")
 
 
+# =========================================================
+# WELCOME PREVIEW — WITH DEBUG
+# =========================================================
+
 @Client.on_message(filters.command("welcomepreview") & filters.group)
 async def welcome_preview(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
+
     chat = await db.get_chat(message.chat.id)
     tmpl = chat.get("welcome")
     media_type = chat.get("welcome_media_type")
@@ -84,6 +89,14 @@ async def welcome_preview(client, message):
 
     has_styled = "buttonurl#" in txt
 
+    # DEBUG — Show what we detected
+    await message.reply_text(
+        f"🔍 <b>Debug Info:</b>\n"
+        f"📷 Media: <code>{media_type}</code>\n"
+        f"🎨 Styled Buttons: <code>{has_styled}</code>\n"
+        f"📝 Text length: <code>{len(txt)}</code>"
+    )
+
     try:
         if media_type == "photo":
             if has_styled:
@@ -96,6 +109,7 @@ async def welcome_preview(client, message):
             else:
                 clean, markup = parse_buttons(txt)
                 await message.reply_photo(file_id, caption=clean, reply_markup=markup)
+
         elif media_type == "video":
             if has_styled:
                 await send_video_with_colored_buttons(
@@ -107,12 +121,15 @@ async def welcome_preview(client, message):
             else:
                 clean, markup = parse_buttons(txt)
                 await message.reply_video(file_id, caption=clean, reply_markup=markup)
+
         elif media_type == "animation":
             clean, markup = parse_buttons(txt)
             await message.reply_animation(file_id, caption=clean, reply_markup=markup)
+
         elif media_type == "document":
             clean, markup = parse_buttons(txt)
             await message.reply_document(file_id, caption=clean, reply_markup=markup)
+
         elif media_type == "sticker":
             sent = await message.reply_sticker(file_id)
             if has_styled:
@@ -126,6 +143,7 @@ async def welcome_preview(client, message):
                 clean, markup = parse_buttons(txt)
                 if clean or markup:
                     await sent.reply_text(clean or "📎", reply_markup=markup)
+
         else:
             if has_styled:
                 await send_with_colored_buttons(
@@ -136,9 +154,21 @@ async def welcome_preview(client, message):
             else:
                 clean, markup = parse_buttons(txt)
                 await message.reply_text(clean or "…", reply_markup=markup)
-    except Exception as e:
-        await message.reply_text(f"❌ Preview error: {e}")
 
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        await message.reply_text(
+            f"❌ <b>Preview error:</b>\n"
+            f"<code>{str(e)[:300]}</code>\n\n"
+            f"<b>Traceback (last 500):</b>\n"
+            f"<code>{err[-500:]}</code>"
+        )
+
+
+# =========================================================
+# NEW MEMBER — WELCOME
+# =========================================================
 
 @Client.on_message(filters.new_chat_members & filters.group, group=0)
 async def on_new_member(client, message):
@@ -176,6 +206,7 @@ async def on_new_member(client, message):
                 else:
                     clean, markup = parse_buttons(txt)
                     await message.reply_photo(file_id, caption=clean, reply_markup=markup)
+
             elif media_type == "video":
                 if has_styled:
                     await send_video_with_colored_buttons(
@@ -187,12 +218,15 @@ async def on_new_member(client, message):
                 else:
                     clean, markup = parse_buttons(txt)
                     await message.reply_video(file_id, caption=clean, reply_markup=markup)
+
             elif media_type == "animation":
                 clean, markup = parse_buttons(txt)
                 await message.reply_animation(file_id, caption=clean, reply_markup=markup)
+
             elif media_type == "document":
                 clean, markup = parse_buttons(txt)
                 await message.reply_document(file_id, caption=clean, reply_markup=markup)
+
             elif media_type == "sticker":
                 sent = await message.reply_sticker(file_id)
                 if has_styled:
@@ -206,6 +240,7 @@ async def on_new_member(client, message):
                     clean, markup = parse_buttons(txt)
                     if clean or markup:
                         await sent.reply_text(clean or "📎", reply_markup=markup)
+
             else:
                 if has_styled:
                     await send_with_colored_buttons(
@@ -216,6 +251,7 @@ async def on_new_member(client, message):
                 else:
                     clean, markup = parse_buttons(txt)
                     await message.reply_text(clean or "…", reply_markup=markup)
+
         except Exception as e:
             print(f"[WELCOME] {e}")
             try:
