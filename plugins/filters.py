@@ -1,3 +1,4 @@
+
 import re
 import random
 from pyrogram import Client, filters
@@ -112,6 +113,12 @@ async def filter_watcher(client, message):
     if not message.text and not message.caption:
         return
 
+    # 👇 FIX: Skip command messages (filter save hone pe turant trigger nahi hoga)
+    if message.text and message.text.startswith("/"):
+        return
+    if message.caption and message.caption.startswith("/"):
+        return
+
     text = (message.text or message.caption).lower()
     chat = await db.get_chat(message.chat.id)
     rules_text = chat.get("rules") or "No rules."
@@ -158,7 +165,6 @@ async def filter_watcher(client, message):
         reply = replace_fillings(reply, user=message.from_user,
                                  chat=message.chat, count=0, rules=rules_text)
 
-        # Check if filter has styled buttons
         has_styled = "buttonurl#" in reply
 
         try:
