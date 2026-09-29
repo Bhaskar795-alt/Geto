@@ -1,7 +1,11 @@
 from pyrogram import Client, filters
 from database import db
 from utils.permissions import is_admin
-from utils.formatting import parse_buttons, replace_fillings
+from utils.formatting import (
+    parse_buttons, replace_fillings,
+    send_with_colored_buttons, send_photo_with_colored_buttons,
+    send_video_with_colored_buttons
+)
 
 
 @Client.on_message(filters.command("setwelcome") & filters.group)
@@ -77,23 +81,61 @@ async def welcome_preview(client, message):
     rules_text = chat.get("rules") or "No rules set."
     txt = replace_fillings(tmpl or "", user=message.from_user, chat=message.chat,
                            count=count, rules=rules_text)
-    clean, markup = parse_buttons(txt)
+
+    has_styled = "buttonurl#" in txt
 
     try:
         if media_type == "photo":
-            await message.reply_photo(file_id, caption=clean, reply_markup=markup)
+            if has_styled:
+                await send_photo_with_colored_buttons(
+                    chat_id=message.chat.id,
+                    file_id=file_id,
+                    caption=txt,
+                    buttons_text=txt
+                )
+            else:
+                clean, markup = parse_buttons(txt)
+                await message.reply_photo(file_id, caption=clean, reply_markup=markup)
         elif media_type == "video":
-            await message.reply_video(file_id, caption=clean, reply_markup=markup)
+            if has_styled:
+                await send_video_with_colored_buttons(
+                    chat_id=message.chat.id,
+                    file_id=file_id,
+                    caption=txt,
+                    buttons_text=txt
+                )
+            else:
+                clean, markup = parse_buttons(txt)
+                await message.reply_video(file_id, caption=clean, reply_markup=markup)
         elif media_type == "animation":
+            clean, markup = parse_buttons(txt)
             await message.reply_animation(file_id, caption=clean, reply_markup=markup)
         elif media_type == "document":
+            clean, markup = parse_buttons(txt)
             await message.reply_document(file_id, caption=clean, reply_markup=markup)
         elif media_type == "sticker":
-            await message.reply_sticker(file_id)
-            if clean or markup:
-                await message.reply_text(clean or "📎", reply_markup=markup)
+            sent = await message.reply_sticker(file_id)
+            if has_styled:
+                await send_with_colored_buttons(
+                    chat_id=message.chat.id,
+                    text=txt,
+                    buttons_text=txt,
+                    reply_to_message_id=sent.id
+                )
+            else:
+                clean, markup = parse_buttons(txt)
+                if clean or markup:
+                    await sent.reply_text(clean or "📎", reply_markup=markup)
         else:
-            await message.reply_text(clean or "…", reply_markup=markup)
+            if has_styled:
+                await send_with_colored_buttons(
+                    chat_id=message.chat.id,
+                    text=txt,
+                    buttons_text=txt
+                )
+            else:
+                clean, markup = parse_buttons(txt)
+                await message.reply_text(clean or "…", reply_markup=markup)
     except Exception as e:
         await message.reply_text(f"❌ Preview error: {e}")
 
@@ -119,25 +161,65 @@ async def on_new_member(client, message):
             continue
         txt = replace_fillings(tmpl, user=user, chat=message.chat,
                                count=count, rules=rules_text)
-        clean, markup = parse_buttons(txt)
+
+        has_styled = "buttonurl#" in txt
 
         try:
             if media_type == "photo":
-                await message.reply_photo(file_id, caption=clean, reply_markup=markup)
+                if has_styled:
+                    await send_photo_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        file_id=file_id,
+                        caption=txt,
+                        buttons_text=txt
+                    )
+                else:
+                    clean, markup = parse_buttons(txt)
+                    await message.reply_photo(file_id, caption=clean, reply_markup=markup)
             elif media_type == "video":
-                await message.reply_video(file_id, caption=clean, reply_markup=markup)
+                if has_styled:
+                    await send_video_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        file_id=file_id,
+                        caption=txt,
+                        buttons_text=txt
+                    )
+                else:
+                    clean, markup = parse_buttons(txt)
+                    await message.reply_video(file_id, caption=clean, reply_markup=markup)
             elif media_type == "animation":
+                clean, markup = parse_buttons(txt)
                 await message.reply_animation(file_id, caption=clean, reply_markup=markup)
             elif media_type == "document":
+                clean, markup = parse_buttons(txt)
                 await message.reply_document(file_id, caption=clean, reply_markup=markup)
             elif media_type == "sticker":
                 sent = await message.reply_sticker(file_id)
-                if clean or markup:
-                    await sent.reply_text(clean or "📎", reply_markup=markup)
+                if has_styled:
+                    await send_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        text=txt,
+                        buttons_text=txt,
+                        reply_to_message_id=sent.id
+                    )
+                else:
+                    clean, markup = parse_buttons(txt)
+                    if clean or markup:
+                        await sent.reply_text(clean or "📎", reply_markup=markup)
             else:
-                await message.reply_text(clean or "…", reply_markup=markup)
-        except Exception:
+                if has_styled:
+                    await send_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        text=txt,
+                        buttons_text=txt
+                    )
+                else:
+                    clean, markup = parse_buttons(txt)
+                    await message.reply_text(clean or "…", reply_markup=markup)
+        except Exception as e:
+            print(f"[WELCOME] {e}")
             try:
+                clean, markup = parse_buttons(txt)
                 await message.reply_text(clean or "…", reply_markup=markup)
             except Exception:
                 pass
