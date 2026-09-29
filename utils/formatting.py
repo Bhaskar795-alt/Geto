@@ -1,34 +1,24 @@
 import re
 import random
-import requests
+import aiohttp
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 
 
 # =========================================================
-# COLORED BUTTON — Direct Bot API
+# COLORED BUTTONS — Async (using aiohttp)
 # =========================================================
 
-def send_with_colored_buttons(
-    chat_id,
-    text,
-    buttons_text,
-    parse_mode="HTML",
-    reply_to_message_id=None
+async def send_with_colored_buttons(
+    chat_id, text, buttons_text,
+    parse_mode="HTML", reply_to_message_id=None
 ):
-    """
-    Send message with colored buttons using direct Telegram Bot API.
-    Supports primary (blue), danger (red), success (green).
-    """
-    if not buttons_text:
-        buttons_text = ""
-
+    """Send message with colored buttons."""
     pattern = r"\[([^\]]+)\]\(buttonurl(?:#(\w+))?://([^\)]+?)(?::same)?\)"
-
     rows = []
     current_row = []
 
-    for m in re.finditer(pattern, buttons_text):
+    for m in re.finditer(pattern, buttons_text or ""):
         label = m.group(1)
         style = m.group(2)
         url = m.group(3)
@@ -63,14 +53,15 @@ def send_with_colored_buttons(
         payload["reply_to_message_id"] = reply_to_message_id
 
     try:
-        r = requests.post(url_api, json=payload, timeout=10)
-        return r.json()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url_api, json=payload, timeout=10) as resp:
+                return await resp.json()
     except Exception as e:
         print(f"[COLORED] {e}")
         return None
 
 
-def send_photo_with_colored_buttons(
+async def send_photo_with_colored_buttons(
     chat_id, file_id, caption, buttons_text,
     parse_mode="HTML", reply_to_message_id=None
 ):
@@ -115,13 +106,15 @@ def send_photo_with_colored_buttons(
         payload["reply_to_message_id"] = reply_to_message_id
 
     try:
-        return requests.post(url_api, json=payload, timeout=10).json()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url_api, json=payload, timeout=10) as resp:
+                return await resp.json()
     except Exception as e:
         print(f"[COLORED PHOTO] {e}")
         return None
 
 
-def send_video_with_colored_buttons(
+async def send_video_with_colored_buttons(
     chat_id, file_id, caption, buttons_text,
     parse_mode="HTML", reply_to_message_id=None
 ):
@@ -166,44 +159,31 @@ def send_video_with_colored_buttons(
         payload["reply_to_message_id"] = reply_to_message_id
 
     try:
-        return requests.post(url_api, json=payload, timeout=10).json()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url_api, json=payload, timeout=10) as resp:
+                return await resp.json()
     except Exception as e:
         print(f"[COLORED VIDEO] {e}")
         return None
 
 
 # =========================================================
-# PARSER — With Style Support
+# PARSER (Pyrogram)
 # =========================================================
 
 def parse_buttons(text, bot_username="GetoBot"):
-    """
-    Rose-style button parser.
-    Supports:
-      [Label](buttonurl://URL)
-      [Label](buttonurl://URL:same)
-      [Label](buttonurl#primary://URL)
-      [Label](buttonurl#danger://URL)
-      [Label](buttonurl#success://URL)
-      [Label](buttonurl://#notename)
-    """
     if not text:
         return "", None
-
     pattern = r"\[([^\]]+)\]\(buttonurl(#[a-z]+)?://([^\)]+?)(:same)?\)"
-
     rows = []
     current_row = []
-
     for m in re.finditer(pattern, text):
         label = m.group(1)
         style = m.group(2)
         url = m.group(3)
         same = m.group(4)
-
         if url.startswith("#"):
             url = f"https://t.me/{bot_username}?start=note_{url[1:]}"
-
         try:
             if style:
                 btn = InlineKeyboardButton(label, url=url, style=style[1:])
@@ -211,63 +191,47 @@ def parse_buttons(text, bot_username="GetoBot"):
                 btn = InlineKeyboardButton(label, url=url)
         except Exception:
             btn = InlineKeyboardButton(label, url=url)
-
         if same and current_row:
             current_row.append(btn)
         else:
             if current_row:
                 rows.append(current_row)
             current_row = [btn]
-
     if current_row:
         rows.append(current_row)
-
     clean = re.sub(pattern, "", text)
     clean = "\n".join(line for line in clean.split("\n") if line.strip())
-
     if not rows:
         return clean.strip(), None
     return clean.strip(), InlineKeyboardMarkup(rows)
 
 
 def parse_buttons_with_style(text, bot_username="GetoBot"):
-    """
-    Parse buttons, return (clean_text, buttons_rows_list).
-    buttons_rows_list format: [[{"text": ..., "url": ..., "style": ...}, ...], ...]
-    """
     if not text:
         return "", []
-
     pattern = r"\[([^\]]+)\]\(buttonurl(?:#(\w+))?://([^\)]+?)(?::same)?\)"
     rows = []
     current_row = []
-
     for m in re.finditer(pattern, text):
         label = m.group(1)
         style = m.group(2)
         url = m.group(3)
         same = ":same" in m.group(0)
-
         if url.startswith("#"):
             url = f"https://t.me/{bot_username}?start=note_{url[1:]}"
-
         btn = {"text": label, "url": url}
         if style and style in ("primary", "danger", "success"):
             btn["style"] = style
-
         if same and current_row:
             current_row.append(btn)
         else:
             if current_row:
                 rows.append(current_row)
             current_row = [btn]
-
     if current_row:
         rows.append(current_row)
-
     clean = re.sub(pattern, "", text)
     clean = "\n".join(line for line in clean.split("\n") if line.strip())
-
     return clean.strip(), rows
 
 
@@ -280,12 +244,10 @@ def replace_fillings(text, user=None, chat=None, count=0,
     from datetime import datetime
     if not text:
         return ""
-
     if "%%%" in text:
         parts = [p.strip() for p in text.split("%%%") if p.strip()]
         if parts:
             text = random.choice(parts)
-
     if user:
         first = user.first_name or ""
         last = user.last_name or ""
@@ -301,29 +263,23 @@ def replace_fillings(text, user=None, chat=None, count=0,
             .replace("{id}", str(user.id))
             .replace("{user_id}", str(user.id))
             .replace("{username}", f"@{username}" if username else mention))
-
     if chat:
         text = (text
             .replace("{chatname}", chat.title or "")
             .replace("{chat_id}", str(chat.id)))
-
     text = (text
         .replace("{count}", str(count))
         .replace("{members}", str(count))
         .replace("{rules}", rules or "No rules"))
-
     now = datetime.now()
     text = (text
         .replace("{date}", now.strftime("%d %b %Y"))
         .replace("{time}", now.strftime("%H:%M:%S")))
-
     if rules_button and "{rules}" in text:
         text = text.replace("{rules}", "")
-
     if extra:
         for k, v in extra.items():
             text = text.replace("{" + k + "}", str(v))
-
     return text
 
 
@@ -356,42 +312,17 @@ def clean_permission_tags(text):
 def convert_markdown(text):
     if not text:
         return text
-
-    text = re.sub(
-        r"```(\w+)?\n(.*?)```",
-        lambda m: f"<pre>{m.group(2)}</pre>",
-        text, flags=re.DOTALL
-    )
+    text = re.sub(r"```(\w+)?\n(.*?)```",
+                  lambda m: f"<pre>{m.group(2)}</pre>",
+                  text, flags=re.DOTALL)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\|\|(.+?)\|\|", r"<tg-spoiler>\1</tg-spoiler>", text)
     text = re.sub(r"__(.+?)__", r"<u>\1</u>", text)
     text = re.sub(r"(?<!_)_([^_]+)_(?!_)", r"<i>\1</i>", text)
     text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<b>\1</b>", text)
     text = re.sub(r"~([^~]+)~", r"<s>\1</s>", text)
-    text = re.sub(
-        r"\[([^\]]+)\]\((?!#|buttonurl)([^\)]+)\)",
-        r'<a href="\2">\1</a>',
-        text
-    )
-
-    lines = text.split("\n")
-    new_lines = []
-    in_quote = False
-    for line in lines:
-        if line.startswith("&gt;") or line.startswith(">"):
-            if not in_quote:
-                new_lines.append("<blockquote>")
-                in_quote = True
-            new_lines.append(line.lstrip("&gt;").lstrip(">").strip())
-        else:
-            if in_quote:
-                new_lines.append("</blockquote>")
-                in_quote = False
-            new_lines.append(line)
-    if in_quote:
-        new_lines.append("</blockquote>")
-    text = "\n".join(new_lines)
-
+    text = re.sub(r"\[([^\]]+)\]\((?!#|buttonurl)([^\)]+)\)",
+                  r'<a href="\2">\1</a>', text)
     return text
 
 
