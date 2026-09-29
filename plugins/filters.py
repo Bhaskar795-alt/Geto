@@ -4,7 +4,9 @@ from pyrogram import Client, filters
 from database import db
 from utils.permissions import is_admin
 from utils.formatting import (
-    parse_buttons, replace_fillings, check_permissions, clean_permission_tags
+    parse_buttons, replace_fillings, check_permissions, clean_permission_tags,
+    send_with_colored_buttons, send_photo_with_colored_buttons,
+    send_video_with_colored_buttons
 )
 
 
@@ -58,7 +60,6 @@ async def add_filter(client, message):
             msg_type, file_id = "document", r.document.file_id
         elif r.animation:
             msg_type, file_id = "animation", r.animation.file_id
-        # If admin used /filter <trigger> <caption> as reply, use that text
         if len(message.command) > 2:
             extra = message.text.split(None, 2)[2]
             if extra:
@@ -101,6 +102,10 @@ async def list_filters(client, message):
         return await message.reply_text("No filters.")
     await message.reply_text("<b>🔥 Filters:</b>\n" + "\n".join(keys))
 
+
+# =========================================================
+# FILTER WATCHER — Colored Buttons Support
+# =========================================================
 
 @Client.on_message(filters.group & ~filters.service, group=5)
 async def filter_watcher(client, message):
@@ -153,37 +158,79 @@ async def filter_watcher(client, message):
         reply = replace_fillings(reply, user=message.from_user,
                                  chat=message.chat, count=0, rules=rules_text)
 
-        clean, markup = parse_buttons(reply)
+        # Check if filter has styled buttons
+        has_styled = "buttonurl#" in reply
 
         try:
             # TEXT
             if fdoc["msg_type"] == "text":
-                await message.reply_text(clean or "…", reply_markup=markup)
+                if has_styled:
+                    await send_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        text=reply,
+                        buttons_text=reply,
+                        reply_to_message_id=message.id
+                    )
+                else:
+                    clean, markup = parse_buttons(reply)
+                    await message.reply_text(clean or "…", reply_markup=markup)
 
             # PHOTO
             elif fdoc["msg_type"] == "photo":
-                await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                if has_styled:
+                    await send_photo_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        file_id=fdoc["file_id"],
+                        caption=reply,
+                        buttons_text=reply,
+                        reply_to_message_id=message.id
+                    )
+                else:
+                    clean, markup = parse_buttons(reply)
+                    await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
 
             # VIDEO
             elif fdoc["msg_type"] == "video":
-                await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                if has_styled:
+                    await send_video_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        file_id=fdoc["file_id"],
+                        caption=reply,
+                        buttons_text=reply,
+                        reply_to_message_id=message.id
+                    )
+                else:
+                    clean, markup = parse_buttons(reply)
+                    await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
 
             # DOCUMENT
             elif fdoc["msg_type"] == "document":
+                clean, markup = parse_buttons(reply)
                 await message.reply_document(fdoc["file_id"], caption=clean or "", reply_markup=markup)
 
             # ANIMATION (GIF)
             elif fdoc["msg_type"] == "animation":
+                clean, markup = parse_buttons(reply)
                 await message.reply_animation(fdoc["file_id"], caption=clean or "", reply_markup=markup)
 
             # STICKER — 2 messages: sticker + text with buttons
             elif fdoc["msg_type"] == "sticker":
                 sent = await message.reply_sticker(fdoc["file_id"])
-                if clean or markup:
+                clean, markup = parse_buttons(reply)
+                if has_styled:
+                    await send_with_colored_buttons(
+                        chat_id=message.chat.id,
+                        text=reply,
+                        buttons_text=reply,
+                        reply_to_message_id=sent.id
+                    )
+                elif clean or markup:
                     await sent.reply_text(clean or "📎", reply_markup=markup)
 
-        except Exception:
+        except Exception as e:
+            print(f"[FILTER] {e}")
             try:
+                clean, markup = parse_buttons(reply)
                 await message.reply_text(clean or "…", reply_markup=markup)
             except Exception:
                 pass
@@ -205,20 +252,57 @@ async def filter_force_noformat(client, message):
             except Exception:
                 pass
             reply = fdoc.get("reply") or ""
-            clean, markup = parse_buttons(reply)
+            has_styled = "buttonurl#" in reply
             try:
                 if fdoc["msg_type"] == "text":
-                    await message.reply_text(clean or "…", reply_markup=markup)
+                    if has_styled:
+                        await send_with_colored_buttons(
+                            chat_id=message.chat.id,
+                            text=reply,
+                            buttons_text=reply,
+                            reply_to_message_id=message.id
+                        )
+                    else:
+                        clean, markup = parse_buttons(reply)
+                        await message.reply_text(clean or "…", reply_markup=markup)
                 elif fdoc["msg_type"] == "photo":
-                    await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                    if has_styled:
+                        await send_photo_with_colored_buttons(
+                            chat_id=message.chat.id,
+                            file_id=fdoc["file_id"],
+                            caption=reply,
+                            buttons_text=reply,
+                            reply_to_message_id=message.id
+                        )
+                    else:
+                        clean, markup = parse_buttons(reply)
+                        await message.reply_photo(fdoc["file_id"], caption=clean or "", reply_markup=markup)
                 elif fdoc["msg_type"] == "video":
-                    await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
+                    if has_styled:
+                        await send_video_with_colored_buttons(
+                            chat_id=message.chat.id,
+                            file_id=fdoc["file_id"],
+                            caption=reply,
+                            buttons_text=reply,
+                            reply_to_message_id=message.id
+                        )
+                    else:
+                        clean, markup = parse_buttons(reply)
+                        await message.reply_video(fdoc["file_id"], caption=clean or "", reply_markup=markup)
                 elif fdoc["msg_type"] == "sticker":
                     sent = await message.reply_sticker(fdoc["file_id"])
-                    if clean or markup:
+                    clean, markup = parse_buttons(reply)
+                    if has_styled:
+                        await send_with_colored_buttons(
+                            chat_id=message.chat.id,
+                            text=reply,
+                            buttons_text=reply,
+                            reply_to_message_id=sent.id
+                        )
+                    elif clean or markup:
                         await sent.reply_text(clean or "📎", reply_markup=markup)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[FORCE] {e}")
         return
 
     if text.endswith(" noformat"):
