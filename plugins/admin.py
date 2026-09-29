@@ -45,24 +45,28 @@ def get_admin_role(status):
     return "👤", "Member"
 
 
+async def is_user_admin(client, chat_id, user_id):
+    """Check if user is already admin."""
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        status = str(getattr(member.status, "value", member.status)).lower()
+        return "administrator" in status or "owner" in status or "creator" in status
+    except Exception:
+        return False
+
+
 # =========================================================
 # LOG HELPER
 # =========================================================
 
 async def send_log(client, message, action, target=None, reason=""):
-    """Send log to configured log channel."""
     try:
         from plugins.logs import log_action
         if target is None:
             target = message.from_user
         await log_action(
-            client,
-            message.chat.id,
-            "admin",
-            action,
-            message.from_user,
-            target,
-            reason
+            client, message.chat.id, "admin", action,
+            message.from_user, target, reason
         )
     except Exception as e:
         print(f"[LOG] {e}")
@@ -76,17 +80,13 @@ async def send_log(client, message, action, target=None, reason=""):
 async def ban_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
-        return await message.reply_text("❌ Reply to a user or give a valid username/ID.")
-
+        return await message.reply_text("❌ Reply to a user or give a valid user.")
     reason = " ".join(message.command[2:]) or "No reason"
     try:
         await client.ban_chat_member(message.chat.id, uid)
-        await message.reply_text(
-            f"🔨 <b>Banned</b> {mention_html(uid, name)}\n📝 {reason}"
-        )
+        await message.reply_text(f"🔨 <b>Banned</b> {mention_html(uid, name)}\n📝 {reason}")
         try:
             target = await client.get_users(uid)
         except Exception:
@@ -106,9 +106,7 @@ async def dban_cmd(client, message):
     try:
         await message.reply_to_message.delete()
         await client.ban_chat_member(message.chat.id, target.id)
-        await message.reply_text(
-            f"🔨 <b>Banned + Deleted</b> {mention_html(target.id, target.first_name)}"
-        )
+        await message.reply_text(f"🔨 <b>Banned + Deleted</b> {mention_html(target.id, target.first_name)}")
         await send_log(client, message, "dban", target, "with message deleted")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
@@ -118,21 +116,16 @@ async def dban_cmd(client, message):
 async def sban_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await message.delete()
     except Exception:
         pass
     try:
         await client.ban_chat_member(message.chat.id, uid)
-        await client.send_message(
-            message.chat.id,
-            f"🔨 <b>Silently banned</b> {mention_html(uid, name)}"
-        )
+        await client.send_message(message.chat.id, f"🔨 <b>Silently banned</b> {mention_html(uid, name)}")
         try:
             target = await client.get_users(uid)
         except Exception:
@@ -146,25 +139,18 @@ async def sban_cmd(client, message):
 async def tban_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     if len(message.command) < 3:
         return await message.reply_text("Usage: /tban <user> <duration>")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     secs = parse_duration(message.command[2])
     if secs == 0:
-        return await message.reply_text("❌ Invalid duration.\nExample: 1h, 30m, 2d")
-
+        return await message.reply_text("❌ Invalid duration.")
     until = datetime.now() + timedelta(seconds=secs)
     try:
         await client.ban_chat_member(message.chat.id, uid, until_date=until)
-        await message.reply_text(
-            f"🔨 <b>Temp-Ban</b> {mention_html(uid, name)}\n"
-            f"⏱️ Duration: <code>{message.command[2]}</code>"
-        )
+        await message.reply_text(f"🔨 <b>Temp-Ban</b> {mention_html(uid, name)}\n⏱️ {message.command[2]}")
         try:
             target = await client.get_users(uid)
         except Exception:
@@ -178,11 +164,9 @@ async def tban_cmd(client, message):
 async def unban_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await client.unban_chat_member(message.chat.id, uid)
         await message.reply_text(f"✅ <b>Unbanned</b> {mention_html(uid, name)}")
@@ -203,11 +187,9 @@ async def unban_cmd(client, message):
 async def mute_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS)
         await db.mute_user(message.chat.id, uid, 0, "permanent")
@@ -232,9 +214,7 @@ async def dmute_cmd(client, message):
         await message.reply_to_message.delete()
         await client.restrict_chat_member(message.chat.id, target.id, MUTE_PERMS)
         await db.mute_user(message.chat.id, target.id, 0, "permanent")
-        await message.reply_text(
-            f"🔇 <b>Muted + Deleted</b> {mention_html(target.id, target.first_name)}"
-        )
+        await message.reply_text(f"🔇 <b>Muted + Deleted</b> {mention_html(target.id, target.first_name)}")
         await send_log(client, message, "dmute", target, "with message deleted")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
@@ -244,11 +224,9 @@ async def dmute_cmd(client, message):
 async def smute_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await message.delete()
     except Exception:
@@ -256,10 +234,7 @@ async def smute_cmd(client, message):
     try:
         await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS)
         await db.mute_user(message.chat.id, uid, 0, "permanent")
-        await client.send_message(
-            message.chat.id,
-            f"🔇 <b>Silently muted</b> {mention_html(uid, name)}"
-        )
+        await client.send_message(message.chat.id, f"🔇 <b>Silently muted</b> {mention_html(uid, name)}")
         try:
             target = await client.get_users(uid)
         except Exception:
@@ -273,30 +248,19 @@ async def smute_cmd(client, message):
 async def tmute_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     if len(message.command) < 3:
         return await message.reply_text("Usage: /tmute <user> <duration>")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     secs = parse_duration(message.command[2])
     if secs == 0:
-        return await message.reply_text("❌ Invalid duration.\nExample: 1h, 30m, 2d")
-
+        return await message.reply_text("❌ Invalid duration.")
     until = datetime.now() + timedelta(seconds=secs)
     try:
-        await client.restrict_chat_member(
-            message.chat.id, uid, MUTE_PERMS, until_date=until
-        )
-        await db.mute_user(
-            message.chat.id, uid, int(until.timestamp()), message.command[2]
-        )
-        await message.reply_text(
-            f"🔇 <b>Temp-Mute</b> {mention_html(uid, name)}\n"
-            f"⏱️ Duration: <code>{message.command[2]}</code>"
-        )
+        await client.restrict_chat_member(message.chat.id, uid, MUTE_PERMS, until_date=until)
+        await db.mute_user(message.chat.id, uid, int(until.timestamp()), message.command[2])
+        await message.reply_text(f"🔇 <b>Temp-Mute</b> {mention_html(uid, name)}\n⏱️ {message.command[2]}")
         try:
             target = await client.get_users(uid)
         except Exception:
@@ -310,11 +274,9 @@ async def tmute_cmd(client, message):
 async def unmute_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await client.restrict_chat_member(message.chat.id, uid, UNMUTE_PERMS)
         await db.unmute_user(message.chat.id, uid)
@@ -332,7 +294,6 @@ async def unmute_cmd(client, message):
 async def mutelist_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     import time
     lines = ["<b>🔇 Active Mutes:</b>\n"]
     async for d in db.get_mutelist(message.chat.id):
@@ -355,11 +316,9 @@ async def mutelist_cmd(client, message):
 async def kick_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await client.ban_chat_member(message.chat.id, uid)
         await client.unban_chat_member(message.chat.id, uid)
@@ -384,9 +343,7 @@ async def dkick_cmd(client, message):
         await message.reply_to_message.delete()
         await client.ban_chat_member(message.chat.id, target.id)
         await client.unban_chat_member(message.chat.id, target.id)
-        await message.reply_text(
-            f"👢 <b>Kicked + Deleted</b> {mention_html(target.id, target.first_name)}"
-        )
+        await message.reply_text(f"👢 <b>Kicked + Deleted</b> {mention_html(target.id, target.first_name)}")
         await send_log(client, message, "dkick", target, "with message deleted")
     except Exception as e:
         await message.reply_text(f"❌ {e}")
@@ -396,11 +353,9 @@ async def dkick_cmd(client, message):
 async def skick_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
-
     try:
         await message.delete()
     except Exception:
@@ -408,10 +363,7 @@ async def skick_cmd(client, message):
     try:
         await client.ban_chat_member(message.chat.id, uid)
         await client.unban_chat_member(message.chat.id, uid)
-        await client.send_message(
-            message.chat.id,
-            f"👢 <b>Silently kicked</b> {mention_html(uid, name)}"
-        )
+        await client.send_message(message.chat.id, f"👢 <b>Silently kicked</b> {mention_html(uid, name)}")
         try:
             target = await client.get_users(uid)
         except Exception:
@@ -432,7 +384,7 @@ async def kickme_cmd(client, message):
 
 
 # =========================================================
-# PROMOTE
+# PROMOTE — With Custom Title + Friendly Error
 # =========================================================
 
 @Client.on_message(filters.command("promote") & filters.group)
@@ -443,6 +395,20 @@ async def promote_cmd(client, message):
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
+
+    # Custom title (optional)
+    custom_title = " ".join(message.command[2:])[:16] or ""
+
+    # Check if user already admin
+    already_admin = await is_user_admin(client, message.chat.id, uid)
+    if already_admin:
+        try:
+            target_user = await client.get_users(uid)
+            return await message.reply_text(
+                f"ℹ️ {target_user.mention} is <b>already an admin</b> in this group."
+            )
+        except Exception:
+            return await message.reply_text("ℹ️ User is already an admin.")
 
     try:
         privileges = ChatPrivileges(
@@ -460,14 +426,45 @@ async def promote_cmd(client, message):
             user_id=uid,
             privileges=privileges
         )
-        await message.reply_text(f"⬆️ <b>Promoted</b> {mention_html(uid, name)}")
+
+        # Set custom title if given
+        if custom_title:
+            try:
+                await client.set_administrator_title(
+                    chat_id=message.chat.id,
+                    user_id=uid,
+                    title=custom_title
+                )
+            except Exception:
+                pass
+
+        title_text = f"\n👑 Title: <b>{custom_title}</b>" if custom_title else ""
+        await message.reply_text(f"⬆️ <b>Promoted</b> {mention_html(uid, name)}{title_text}")
+
         try:
             target = await client.get_users(uid)
         except Exception:
             target = uid
-        await send_log(client, message, "promote", target, "")
+        await send_log(client, message, "promote", target, custom_title or "")
+
     except Exception as e:
-        await message.reply_text(f"❌ {e}")
+        error_str = str(e)
+        # Friendly error for missing admin rights
+        if "CHAT_ADMIN_REQUIRED" in error_str or "not enough rights" in error_str.lower():
+            await message.reply_text(
+                "❌ <b>Cannot promote this user</b>\n\n"
+                "⚠️ <b>Bot ko ye permissions chahiye:</b>\n"
+                "• ✅ Add New Admins\n"
+                "• ✅ Ban Users\n"
+                "• ✅ Delete Messages\n\n"
+                "📋 <b>Fix:</b>\n"
+                "1. Group → Manage → Administrators\n"
+                "2. Bot → Add New Admins → ON\n"
+                "3. Save karo\n"
+                "4. Phir se try karo"
+            )
+        else:
+            await message.reply_text(f"❌ {error_str}")
 
 
 # =========================================================
@@ -478,10 +475,20 @@ async def promote_cmd(client, message):
 async def demote_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     uid, name, _ = await resolve_user(client, message)
     if not uid:
         return await message.reply_text("❌ Reply to a user or give a valid user.")
+
+    # Check if user is admin
+    is_admin_user = await is_user_admin(client, message.chat.id, uid)
+    if not is_admin_user:
+        try:
+            target_user = await client.get_users(uid)
+            return await message.reply_text(
+                f"ℹ️ {target_user.mention} is <b>not an admin</b> in this group."
+            )
+        except Exception:
+            return await message.reply_text("ℹ️ User is not an admin.")
 
     try:
         privileges = ChatPrivileges(
@@ -506,25 +513,44 @@ async def demote_cmd(client, message):
             target = uid
         await send_log(client, message, "demote", target, "")
     except Exception as e:
-        await message.reply_text(f"❌ {e}")
+        error_str = str(e)
+        if "CHAT_ADMIN_REQUIRED" in error_str:
+            await message.reply_text(
+                "❌ <b>Cannot demote this user</b>\n\n"
+                "Bot ko <b>Add New Admins</b> permission chahiye."
+            )
+        else:
+            await message.reply_text(f"❌ {error_str}")
 
 
 # =========================================================
-# ADMINS
+# ADMINS — NEW FORMAT
 # =========================================================
 
 @Client.on_message(filters.command("admins") & filters.group)
 async def admins_cmd(client, message):
-    lines = ["<b>👮 Admins:</b>\n"]
+    lines = ["👑 <b>GROUP ADMINS</b>\n"]
     try:
-        async for m in client.get_chat_members(
-            message.chat.id, filter="administrators"
-        ):
-            icon, role = get_admin_role(m.status)
-            lines.append(
-                f"{icon} <b>{role}</b> — {m.user.mention} "
-                f"(<code>{m.user.id}</code>)"
-            )
+        admin_list = []
+        async for m in client.get_chat_members(message.chat.id, filter="administrators"):
+            admin_list.append(m)
+
+        for i, admin in enumerate(admin_list, 1):
+            user = admin.user
+            if user.username:
+                name = f"@{user.username}"
+            else:
+                name = user.first_name or "Unknown"
+
+            status = str(getattr(admin.status, "value", admin.status)).lower()
+            if "owner" in status or "creator" in status:
+                role = "👑 Owner"
+            else:
+                role = "🛡 Admin"
+
+            lines.append(f"{i}. <b>{name}</b> — {role}")
+
+        lines.append(f"\n<b>Total:</b> <code>{len(admin_list)}</code>")
     except Exception as e:
         return await message.reply_text(f"❌ {e}")
     await message.reply_text("\n".join(lines))
@@ -534,14 +560,9 @@ async def admins_cmd(client, message):
 async def adminlist_cmd(client, message):
     lines = ["<b>👮 Admin List:</b>\n"]
     try:
-        async for m in client.get_chat_members(
-            message.chat.id, filter="administrators"
-        ):
+        async for m in client.get_chat_members(message.chat.id, filter="administrators"):
             icon, role = get_admin_role(m.status)
-            lines.append(
-                f"{icon} <b>{role}</b> {m.user.mention} "
-                f"— <code>{m.user.id}</code>"
-            )
+            lines.append(f"{icon} <b>{role}</b> {m.user.mention} — <code>{m.user.id}</code>")
     except Exception as e:
         return await message.reply_text(f"❌ {e}")
     await message.reply_text("\n".join(lines))
@@ -551,13 +572,10 @@ async def adminlist_cmd(client, message):
 async def admincache_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     try:
         import time
         admins = []
-        async for m in client.get_chat_members(
-            message.chat.id, filter="administrators"
-        ):
+        async for m in client.get_chat_members(message.chat.id, filter="administrators"):
             status = getattr(m.status, "value", m.status)
             admins.append({
                 "user_id": m.user.id,
@@ -579,7 +597,6 @@ async def admincache_cmd(client, message):
 async def anonadmin_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     if len(message.command) < 2:
         chat = await db.get_chat(message.chat.id)
         state = chat.get("anonadmin", False)
@@ -587,7 +604,6 @@ async def anonadmin_cmd(client, message):
             f"📋 <b>Anonymous Admin:</b> {'ON' if state else 'OFF'}\n"
             f"Usage: /anonadmin yes|no"
         )
-
     val = message.command[1].lower()
     if val in ("yes", "on", "true", "1"):
         await db.set_chat_field(message.chat.id, "anonadmin", True)
@@ -603,7 +619,6 @@ async def anonadmin_cmd(client, message):
 async def adminerror_cmd(client, message):
     if not await is_admin(client, message.chat.id, message.from_user.id):
         return await message.reply_text("❌ Admin only.")
-
     if len(message.command) < 2:
         chat = await db.get_chat(message.chat.id)
         state = chat.get("adminerror", True)
@@ -611,7 +626,6 @@ async def adminerror_cmd(client, message):
             f"📋 <b>Admin Error Messages:</b> {'ON' if state else 'OFF'}\n"
             f"Usage: /adminerror yes|no"
         )
-
     val = message.command[1].lower()
     if val in ("yes", "on", "true", "1"):
         await db.set_chat_field(message.chat.id, "adminerror", True)
