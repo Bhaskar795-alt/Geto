@@ -34,7 +34,7 @@ async def add_user(user_id, name=""):
 async def get_user(user_id):
     return await users.find_one({"user_id": user_id})
 
-async def all_users():
+def all_users():                          # ← def (not async def)
     return users.find({})
 
 async def count_users():
@@ -57,7 +57,7 @@ async def set_chat_field(chat_id, field, value):
     await chats.update_one({"chat_id": chat_id},
         {"$set": {field: value}}, upsert=True)
 
-async def all_chats():
+def all_chats():                          # ← def (not async def)
     return chats.find({})
 
 async def count_chats():
@@ -110,7 +110,7 @@ async def unmute_user(chat_id, user_id):
 async def is_muted(chat_id, user_id):
     return await mutes.find_one({"chat_id": chat_id, "user_id": user_id})
 
-async def get_mutelist(chat_id):
+def get_mutelist(chat_id):                # ← def (not async def)
     return mutes.find({"chat_id": chat_id})
 
 
@@ -124,7 +124,7 @@ async def save_filter(chat_id, keyword, reply, msg_type="text", file_id="", butt
 async def get_filter(chat_id, keyword):
     return await filters_c.find_one({"chat_id": chat_id, "keyword": keyword.lower()})
 
-def get_all_filters(chat_id):
+def get_all_filters(chat_id):             # ← def (not async def)
     return filters_c.find({"chat_id": chat_id})
 
 async def delete_filter(chat_id, keyword):
@@ -144,7 +144,7 @@ async def save_note(chat_id, name, reply, msg_type="text", file_id="", buttons=N
 async def get_note(chat_id, name):
     return await notes_c.find_one({"chat_id": chat_id, "name": name.lower()})
 
-async def get_all_notes(chat_id):
+def get_all_notes(chat_id):               # ← def (not async def)
     return notes_c.find({"chat_id": chat_id})
 
 async def delete_note(chat_id, name):
@@ -172,7 +172,7 @@ async def add_block(chat_id, word):
 async def remove_block(chat_id, word):
     await blocklist.delete_one({"chat_id": chat_id, "word": word.lower()})
 
-async def get_blocks(chat_id):
+def get_blocks(chat_id):                  # ← def (not async def)
     return blocklist.find({"chat_id": chat_id})
 
 async def clear_blocks(chat_id):
@@ -188,7 +188,7 @@ async def add_allow(chat_id, value):
 async def remove_allow(chat_id, value):
     await allowlist.delete_one({"chat_id": chat_id, "value": value.lower()})
 
-async def get_allows(chat_id):
+def get_allows(chat_id):                  # ← def (not async def)
     return allowlist.find({"chat_id": chat_id})
 
 async def clear_allows(chat_id):
@@ -205,7 +205,7 @@ async def save_emoji(name, emoji_id, fallback, owner_id):
 async def get_emoji(name):
     return await emojis.find_one({"name": name.upper()})
 
-async def get_all_emojis():
+def get_all_emojis():                     # ← def (not async def)
     return emojis.find({})
 
 async def delete_emoji(name):
@@ -224,7 +224,7 @@ async def is_approved(chat_id, user_id):
 async def unapprove_user(chat_id, user_id):
     await approvals.delete_one({"chat_id": chat_id, "user_id": user_id})
 
-async def get_approved_list(chat_id):
+def get_approved_list(chat_id):           # ← def (not async def)
     return approvals.find({"chat_id": chat_id})
 
 async def unapprove_all(chat_id):
@@ -239,7 +239,7 @@ async def add_sudo(user_id):
 async def remove_sudo(user_id):
     await sudo_users.delete_one({"user_id": user_id})
 
-async def get_sudo_list():
+def get_sudo_list():                      # ← def (not async def)
     return sudo_users.find({})
 
 async def is_sudo(user_id):
@@ -256,7 +256,7 @@ async def disable_cmd(chat_id, cmd):
 async def enable_cmd(chat_id, cmd):
     await disabled_c.delete_one({"chat_id": chat_id, "cmd": cmd.lower()})
 
-async def get_disabled(chat_id):
+def get_disabled(chat_id):                # ← def (not async def)
     return disabled_c.find({"chat_id": chat_id})
 
 async def is_disabled(chat_id, cmd):
@@ -297,7 +297,7 @@ async def add_fed_ban(fed_id, user_id, reason=""):
 async def remove_fed_ban(fed_id, user_id):
     await fed_bans.delete_one({"fed_id": fed_id, "user_id": user_id})
 
-async def get_fed_bans(fed_id):
+def get_fed_bans(fed_id):                 # ← def (not async def)
     return fed_bans.find({"fed_id": fed_id})
 
 async def is_fed_banned(fed_id, user_id):
@@ -306,9 +306,13 @@ async def is_fed_banned(fed_id, user_id):
 
 # ---------- FLOOD ----------
 async def add_flood(chat_id, user_id):
-    await floods.update_one(
+    result = await floods.find_one_and_update(     # ← Return count
         {"chat_id": chat_id, "user_id": user_id},
-        {"$inc": {"count": 1}}, upsert=True)
+        {"$inc": {"count": 1}},
+        upsert=True,
+        return_document=True
+    )
+    return result.get("count", 1) if result else 1
 
 async def get_flood(chat_id, user_id):
     doc = await floods.find_one({"chat_id": chat_id, "user_id": user_id})
