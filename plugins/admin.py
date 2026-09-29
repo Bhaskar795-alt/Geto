@@ -1465,73 +1465,132 @@ async def anonadmin_cmd(client, message):
 # ADMIN ERROR
 # =========================================================
 
-@Client.on_message(filters.command("adminerror") & filters.group)
-async def adminerror_cmd(client, message):
+# =========================================================
+# ADMINS — COMPLETE ADMIN LIST
+# =========================================================
 
-    if not await is_admin(
-        client,
-        message.chat.id,
-        message.from_user.id
-    ):
-        return await message.reply_text(
-            "❌ Admin only."
-        )
+@Client.on_message(filters.command("admins") & filters.group)
+async def admins_cmd(client, message):
 
-    if len(message.command) < 2:
+    try:
+        admin_list = []
 
-        chat = await db.get_chat(
-            message.chat.id
-        )
-
-        state = chat.get(
-            "adminerror",
-            True
-        )
-
-        return await message.reply_text(
-            f"📋 <b>Admin Error Messages:</b> "
-            f"{'ON' if state else 'OFF'}\n"
-            f"Usage: /adminerror yes|no"
-        )
-
-    val = message.command[1].lower()
-
-    if val in (
-        "yes",
-        "on",
-        "true",
-        "1"
-    ):
-
-        await db.set_chat_field(
+        async for member in client.get_chat_members(
             message.chat.id,
-            "adminerror",
-            True
-        )
+            filter="administrators"
+        ):
+            admin_list.append(member)
+
+        if not admin_list:
+            return await message.reply_text(
+                "❌ <b>Admin list nahi mili.</b>"
+            )
+
+        lines = [
+            "👑 <b>GROUP ADMINS</b>",
+            "",
+            f"👥 <b>Total Admins:</b> "
+            f"<code>{len(admin_list)}</code>",
+            ""
+        ]
+
+        for i, member in enumerate(admin_list, 1):
+
+            user = member.user
+
+            # =================================================
+            # FULL NAME
+            # =================================================
+
+            first_name = user.first_name or ""
+            last_name = user.last_name or ""
+
+            name = f"{first_name} {last_name}".strip()
+
+            if not name:
+                name = "Unknown"
+
+            # =================================================
+            # USERNAME / MENTION
+            # =================================================
+
+            if user.username:
+                user_text = f"@{user.username}"
+            else:
+                user_text = (
+                    f'<a href="tg://user?id={user.id}">'
+                    f'{name}</a>'
+                )
+
+            # =================================================
+            # STATUS
+            # IMPORTANT:
+            # Pyrogram version ke according member.status
+            # string ya enum dono ho sakta hai.
+            # =================================================
+
+            status = getattr(member, "status", "")
+
+            if hasattr(status, "value"):
+                status = status.value
+
+            status = str(status).lower()
+
+            # Remove enum prefix if present
+            status = status.replace(
+                "chatmemberstatus.",
+                ""
+            )
+
+            # =================================================
+            # ROLE
+            # =================================================
+
+            if status in (
+                "owner",
+                "creator"
+            ):
+                role = "👑 <b>Owner</b>"
+
+            elif status in (
+                "administrator",
+                "admin"
+            ):
+                role = "🛡️ <b>Admin</b>"
+
+            else:
+                # Safety fallback
+                if (
+                    "owner" in status
+                    or "creator" in status
+                ):
+                    role = "👑 <b>Owner</b>"
+                else:
+                    role = "🛡️ <b>Admin</b>"
+
+            # =================================================
+            # ADD ADMIN TO LIST
+            # =================================================
+
+            lines.append(
+                f"<b>{i}.</b> {role}\n"
+                f"   👤 {name}\n"
+                f"   🔗 {user_text}\n"
+                f"   🆔 <code>{user.id}</code>\n"
+            )
+
+        # =====================================================
+        # SEND RESULT
+        # =====================================================
 
         await message.reply_text(
-            "✅ Admin error messages: ON"
+            "\n".join(lines),
+            disable_web_page_preview=True
         )
 
-    elif val in (
-        "no",
-        "off",
-        "false",
-        "0"
-    ):
-
-        await db.set_chat_field(
-            message.chat.id,
-            "adminerror",
-            False
-        )
+    except Exception as e:
 
         await message.reply_text(
-            "✅ Admin error messages: OFF"
-        )
-
-    else:
-
-        await message.reply_text(
-            "❌ Usage: /adminerror yes|no"
+            "❌ <b>Admin list error:</b>\n"
+            f"<code>{e}</code>"
         )
