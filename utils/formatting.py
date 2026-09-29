@@ -1,30 +1,37 @@
 import re
 import random
+import logging
 import aiohttp
+from html import escape
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 
+log = logging.getLogger("GETO")
+
 
 # =========================================================
-# COLORED BUTTONS — With Fallback
+# TELEGRAM API
 # =========================================================
 
 async def _send_telegram_api(endpoint, payload):
-    """Send request to Telegram Bot API."""
     url = f"https://api.telegram.org/bot{Config.BOT_TOKEN}/{endpoint}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, timeout=15) as resp:
-                return await resp.json()
+                result = await resp.json()
+                if not result.get("ok"):
+                    log.error(f"[API ERROR] {endpoint}: {result.get('description', 'unknown')}")
+                return result
     except Exception as e:
-        print(f"[API ERROR] {e}")
+        log.error(f"[API EXCEPTION] {endpoint}: {e}")
         return {"ok": False, "description": str(e)}
 
 
-async def send_with_colored_buttons(
-    chat_id, text, buttons_text,
-    parse_mode="HTML", reply_to_message_id=None
-):
+# =========================================================
+# COLORED BUTTONS — With Multi-Fallback
+# =========================================================
+
+def _parse_button_rows(buttons_text):
     pattern = r"\[([^\]]+)\]\(buttonurl(?:#(\w+))?://([^\)]+?)(?::same)?\)"
     rows = []
     current_row = []
@@ -48,9 +55,52 @@ async def send_with_colored_buttons(
 
     if current_row:
         rows.append(current_row)
+    return rows
 
+
+def _clean_text(text):
+    pattern = r"\[([^\]]+)\]\(buttonurl(?:#(\w+))?://([^\)]+?)(?::same)?\)"
     clean = re.sub(pattern, "", text or "")
     clean = "\n".join(line for line in clean.split("\n") if line.strip())
+    return clean
+
+
+async def _send_with_fallback(endpoint, payload, rows):
+    """Try multiple combinations of style/parse_mode."""
+
+    # Try 1: with style + parse_mode
+    result = await _send_telegram_api(endpoint, payload)
+    if result and result.get("ok"):
+        log.info(f"[COLORED] Sent with style ✅")
+        return result
+
+    # Try 2: without style + parse_mode
+    for row in rows:
+        for btn in row:
+            btn.pop("style", None)
+    payload["reply_markup"] = {"inline_keyboard": rows}
+    result = await _send_telegram_api(endpoint, payload)
+    if result and result.get("ok"):
+        log.info("[COLORED] Sent without style ✅")
+        return result
+
+    # Try 3: no parse_mode + no style (plain text)
+    payload.pop("parse_mode", None)
+    result = await _send_telegram_api(endpoint, payload)
+    if result and result.get("ok"):
+        log.info("[COLORED] Sent as plain text ✅")
+        return result
+
+    log.error(f"[COLORED] All attempts failed: {result}")
+    return result
+
+
+async def send_with_colored_buttons(
+    chat_id, text, buttons_text,
+    parse_mode="HTML", reply_to_message_id=None
+):
+    rows = _parse_button_rows(buttons_text)
+    clean = _clean_text(text)
 
     payload = {
         "chat_id": chat_id,
@@ -62,59 +112,16 @@ async def send_with_colored_buttons(
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
-    # Try with style first
-    result = await _send_telegram_api("sendMessage", payload)
-
-    if result and result.get("ok"):
-        print("[COLORED] Sent with style ✅")
-        return result
-
-    # Fallback: remove style
-    print(f"[COLORED] Failed with style, retrying without. Error: {result.get('description', 'unknown')}")
-    for row in rows:
-        for btn in row:
-            btn.pop("style", None)
-    payload["reply_markup"] = {"inline_keyboard": rows}
-    result = await _send_telegram_api("sendMessage", payload)
-
-    if result and result.get("ok"):
-        print("[COLORED] Sent without style (fallback) ✅")
-    else:
-        print(f"[COLORED] Both attempts failed: {result}")
-
-    return result
+    log.info(f"[COLORED] Sending text. Clean: {clean[:80]}...")
+    return await _send_with_fallback("sendMessage", payload, rows)
 
 
 async def send_photo_with_colored_buttons(
     chat_id, file_id, caption, buttons_text,
     parse_mode="HTML", reply_to_message_id=None
 ):
-    pattern = r"\[([^\]]+)\]\(buttonurl(?:#(\w+))?://([^\)]+?)(?::same)?\)"
-    rows = []
-    current_row = []
-
-    for m in re.finditer(pattern, buttons_text or ""):
-        label = m.group(1)
-        style = m.group(2)
-        url = m.group(3)
-        same = ":same" in m.group(0)
-
-        btn = {"text": label, "url": url}
-        if style and style in ("primary", "danger", "success"):
-            btn["style"] = style
-
-        if same and current_row:
-            current_row.append(btn)
-        else:
-            if current_row:
-                rows.append(current_row)
-            current_row = [btn]
-
-    if current_row:
-        rows.append(current_row)
-
-    clean = re.sub(pattern, "", caption or "")
-    clean = "\n".join(line for line in clean.split("\n") if line.strip())
+    rows = _parse_button_rows(buttons_text)
+    clean = _clean_text(caption)
 
     payload = {
         "chat_id": chat_id,
@@ -127,49 +134,16 @@ async def send_photo_with_colored_buttons(
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
-    result = await _send_telegram_api("sendPhoto", payload)
-    if result and result.get("ok"):
-        return result
-
-    # Fallback
-    print(f"[COLORED PHOTO] Retry without style. Error: {result.get('description', 'unknown')}")
-    for row in rows:
-        for btn in row:
-            btn.pop("style", None)
-    payload["reply_markup"] = {"inline_keyboard": rows}
-    return await _send_telegram_api("sendPhoto", payload)
+    log.info(f"[COLORED PHOTO] Sending. Caption: {clean[:80]}...")
+    return await _send_with_fallback("sendPhoto", payload, rows)
 
 
 async def send_video_with_colored_buttons(
     chat_id, file_id, caption, buttons_text,
     parse_mode="HTML", reply_to_message_id=None
 ):
-    pattern = r"\[([^\]]+)\]\(buttonurl(?:#(\w+))?://([^\)]+?)(?::same)?\)"
-    rows = []
-    current_row = []
-
-    for m in re.finditer(pattern, buttons_text or ""):
-        label = m.group(1)
-        style = m.group(2)
-        url = m.group(3)
-        same = ":same" in m.group(0)
-
-        btn = {"text": label, "url": url}
-        if style and style in ("primary", "danger", "success"):
-            btn["style"] = style
-
-        if same and current_row:
-            current_row.append(btn)
-        else:
-            if current_row:
-                rows.append(current_row)
-            current_row = [btn]
-
-    if current_row:
-        rows.append(current_row)
-
-    clean = re.sub(pattern, "", caption or "")
-    clean = "\n".join(line for line in clean.split("\n") if line.strip())
+    rows = _parse_button_rows(buttons_text)
+    clean = _clean_text(caption)
 
     payload = {
         "chat_id": chat_id,
@@ -182,17 +156,8 @@ async def send_video_with_colored_buttons(
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
-    result = await _send_telegram_api("sendVideo", payload)
-    if result and result.get("ok"):
-        return result
-
-    # Fallback
-    print(f"[COLORED VIDEO] Retry without style. Error: {result.get('description', 'unknown')}")
-    for row in rows:
-        for btn in row:
-            btn.pop("style", None)
-    payload["reply_markup"] = {"inline_keyboard": rows}
-    return await _send_telegram_api("sendVideo", payload)
+    log.info(f"[COLORED VIDEO] Sending. Caption: {clean[:80]}...")
+    return await _send_with_fallback("sendVideo", payload, rows)
 
 
 # =========================================================
@@ -235,7 +200,7 @@ def parse_buttons(text, bot_username="GetoBot"):
 
 
 # =========================================================
-# FILLINGS
+# FILLINGS — With HTML ESCAPE
 # =========================================================
 
 def replace_fillings(text, user=None, chat=None, count=0,
@@ -243,16 +208,19 @@ def replace_fillings(text, user=None, chat=None, count=0,
     from datetime import datetime
     if not text:
         return ""
+
     if "%%%" in text:
         parts = [p.strip() for p in text.split("%%%") if p.strip()]
         if parts:
             text = random.choice(parts)
+
     if user:
-        first = user.first_name or ""
-        last = user.last_name or ""
+        first = escape(user.first_name or "")
+        last = escape(user.last_name or "")
         fullname = (first + " " + last).strip() or first
         username = getattr(user, "username", None)
-        mention = user.mention if hasattr(user, "mention") else first
+        # Safe mention — escaped first_name
+        mention = f'<a href="tg://user?id={user.id}">{first}</a>'
         text = (text
             .replace("{first}", first)
             .replace("{last}", last)
@@ -262,23 +230,30 @@ def replace_fillings(text, user=None, chat=None, count=0,
             .replace("{id}", str(user.id))
             .replace("{user_id}", str(user.id))
             .replace("{username}", f"@{username}" if username else mention))
+
     if chat:
+        safe_title = escape(chat.title or "")
         text = (text
-            .replace("{chatname}", chat.title or "")
+            .replace("{chatname}", safe_title)
             .replace("{chat_id}", str(chat.id)))
+
     text = (text
         .replace("{count}", str(count))
         .replace("{members}", str(count))
         .replace("{rules}", rules or "No rules"))
+
     now = datetime.now()
     text = (text
         .replace("{date}", now.strftime("%d %b %Y"))
         .replace("{time}", now.strftime("%H:%M:%S")))
+
     if rules_button and "{rules}" in text:
         text = text.replace("{rules}", "")
+
     if extra:
         for k, v in extra.items():
             text = text.replace("{" + k + "}", str(v))
+
     return text
 
 
