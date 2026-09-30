@@ -28,7 +28,7 @@ async def _send_telegram_api(endpoint, payload):
 
 
 # =========================================================
-# COLORED BUTTONS — With Multi-Fallback
+# COLORED BUTTONS
 # =========================================================
 
 def _parse_button_rows(buttons_text):
@@ -84,7 +84,7 @@ async def _send_with_fallback(endpoint, payload, rows):
         log.info("[COLORED] Sent without style ✅")
         return result
 
-    # Try 3: no parse_mode + no style (plain text)
+    # Try 3: no parse_mode
     payload.pop("parse_mode", None)
     result = await _send_telegram_api(endpoint, payload)
     if result and result.get("ok"):
@@ -104,15 +104,21 @@ async def send_with_colored_buttons(
 
     payload = {
         "chat_id": chat_id,
-        "text": clean or "…",
         "parse_mode": parse_mode,
+        "disable_web_page_preview": True,
     }
+    # Only add text if not empty
+    if clean:
+        payload["text"] = clean
+    else:
+        payload["text"] = " "  # space (Telegram requires non-empty)
+
     if rows:
         payload["reply_markup"] = {"inline_keyboard": rows}
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
-    log.info(f"[COLORED] Sending text. Clean: {clean[:80]}...")
+    log.info(f"[COLORED] Sending text: {clean[:80]}...")
     return await _send_with_fallback("sendMessage", payload, rows)
 
 
@@ -126,9 +132,12 @@ async def send_photo_with_colored_buttons(
     payload = {
         "chat_id": chat_id,
         "photo": file_id,
-        "caption": clean or "…",
         "parse_mode": parse_mode,
     }
+    # Only add caption if not empty (no "..." placeholder)
+    if clean:
+        payload["caption"] = clean
+
     if rows:
         payload["reply_markup"] = {"inline_keyboard": rows}
     if reply_to_message_id:
@@ -148,9 +157,11 @@ async def send_video_with_colored_buttons(
     payload = {
         "chat_id": chat_id,
         "video": file_id,
-        "caption": clean or "…",
         "parse_mode": parse_mode,
     }
+    if clean:
+        payload["caption"] = clean
+
     if rows:
         payload["reply_markup"] = {"inline_keyboard": rows}
     if reply_to_message_id:
@@ -219,7 +230,6 @@ def replace_fillings(text, user=None, chat=None, count=0,
         last = escape(user.last_name or "")
         fullname = (first + " " + last).strip() or first
         username = getattr(user, "username", None)
-        # Safe mention — escaped first_name
         mention = f'<a href="tg://user?id={user.id}">{first}</a>'
         text = (text
             .replace("{first}", first)
